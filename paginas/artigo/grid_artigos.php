@@ -8,7 +8,12 @@ add_shortcode('grid_artigos', function ($atts = []) {
             'order' => 'DESC',
             'show_category' => 'true', // exibe as categorias no card
             'show_tags' => 'true', // exibe as tags no card
+            'placeholder' => 'Pesquisar no acervo...', // placeholder do input
+            'title_search' => 'Pesquisar',              // rótulo do botão
     ], $atts, 'grid_artigos');
+
+    // Termo de busca (?q=texto)
+    $q = isset($_GET['q']) ? sanitize_text_field(wp_unslash($_GET['q'])) : '';
 
     // Descobre a categoria selecionada (URL > shortcode > arquivo de categoria)
     $selected_term = null;
@@ -50,6 +55,14 @@ add_shortcode('grid_artigos', function ($atts = []) {
             'order' => (strtoupper($a['order']) === 'ASC') ? 'ASC' : 'DESC',
     ];
 
+    // Busca por texto (relevância nativa do WP)
+    // Busca por texto (título, conteúdo, excerpt)
+    if ($q !== '') {
+        $args['s'] = $q;           // já procura no TÍTULO e conteúdo
+        $args['orderby'] = 'relevance';
+    }
+
+    // Filtro por categoria (se houver)
     if ($selected_term instanceof WP_Term) {
         $args['tax_query'] = [[
                 'taxonomy' => 'category',
@@ -71,6 +84,38 @@ add_shortcode('grid_artigos', function ($atts = []) {
             }
         }
 
+        .grid-artigos-head {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            margin: 0 0 10px
+        }
+
+        .mp-search-form {
+            display: flex;
+            gap: 8px;
+            align-items: center
+        }
+
+        .mp-search-input {
+            flex: 1;
+            border: 1px solid #d1d5db;
+            border-radius: 24px !important;
+            padding: .6rem 1rem;
+            font-size: 1rem;
+            background: #fff
+        }
+
+        .mp-search-btn {
+            border: none;
+            border-radius: 24px;
+            padding: .6rem 1rem;
+            font-weight: 600;
+            background: #111827;
+            color: #fff;
+            cursor: pointer
+        }
+
         .grid-artigos-container {
             display: grid;
             grid-template-columns:repeat(auto-fit, minmax(250px, 280px));
@@ -88,7 +133,7 @@ add_shortcode('grid_artigos', function ($atts = []) {
             flex-direction: column;
             justify-content: space-between;
             box-shadow: 0 2px 6px rgba(16, 24, 40, .04);
-            transition: transform .2s ease, box-shadow .2s ease;
+            transition: transform .2s, box-shadow .2s;
         }
 
         .artigo-card:hover {
@@ -102,93 +147,106 @@ add_shortcode('grid_artigos', function ($atts = []) {
             object-fit: cover;
             border-radius: 8px;
             margin-bottom: 8px;
-            background: #f2f4f7;
+            background: #f2f4f7
         }
 
         .artigo-card h3 {
             font-size: 16px;
             margin: 8px 0 6px;
             color: #111827;
-            line-height: 1.25;
+            line-height: 1.25
         }
 
         .artigo-card p {
             font-size: 14px;
             color: #4b5563;
-            margin-bottom: 8px;
+            margin-bottom: 8px
         }
 
         .artigo-card .meta {
             font-size: 12px;
             color: #6b7280;
-            margin-bottom: 6px;
+            margin-bottom: 6px
         }
 
         .artigo-card a.btn-leia {
+            text-align: end;
             margin-top: auto;
+            font-size: 13px;
             font-weight: 600;
             color: #9E2B19;
             text-decoration: none;
-            padding: 8px 0;
+            padding: 8px 0
         }
 
         .artigo-card a.btn-leia:hover {
             text-decoration: underline
         }
 
-        /* badge de categoria ativa (quando houver) */
-        .grid-artigos-head {
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            margin: 0 0 8px;
-        }
-
-        .grid-artigos-head .badge-cat {
+        .grid-artigos-head .badge-cat{
+            align-self: flex-start;     /* não estica no flex container */
             display: inline-flex;
-            align-items: center;
             gap: 8px;
-            background: rgba(158, 43, 25, 0.13);
+            background: rgba(158,43,25,.13);
             color: #9E2B19;
             border: 1px solid #e0e7ff;
-            padding: 6px 10px;
+            padding: 6px 12px;
             border-radius: 999px;
-            font-size: 12px;
+            font-size: 13px;
             font-weight: 600;
+            white-space: nowrap;        /* não quebra linha */
+            flex: 0 0 auto;             /* garante tamanho do conteúdo */
+            width: auto;                /* redundante, mas ajuda contra overrides */
         }
+
 
         .grid-artigos-pagination {
             display: flex;
             gap: 8px;
             justify-content: center;
             align-items: center;
-            margin-top: 8px;
+            margin-top: 8px
         }
 
-        .grid-artigos-pagination a,
-        .grid-artigos-pagination span {
+        .grid-artigos-pagination a, .grid-artigos-pagination span {
             padding: 6px 10px;
             border: 1px solid #e6e8eb;
             border-radius: 8px;
             text-decoration: none;
             color: #374151;
-            font-size: 13px;
+            font-size: 13px
         }
 
         .grid-artigos-pagination .current {
-            background: #0d6efd;
+            background: #9E2B19;
             color: #fff;
-            border-color: #0d6efd;
+            border-color: #9E2B19
         }
     </style>
 
     <div class="grid-artigos-head">
+        <!-- Campo de pesquisa -->
+        <form class="mp-search-form" method="get">
+            <input class="mp-search-input" type="search" name="q"
+                   value="<?php echo esc_attr($q); ?>"
+                   placeholder="<?php echo esc_attr($a['placeholder']); ?>"
+                   aria-label="Pesquisar artigos"/>
+            <?php
+            // preserva parâmetros de categoria ao pesquisar
+            if ($selected_term instanceof WP_Term) {
+                echo '<input type="hidden" name="cat" value="' . intval($selected_term->term_id) . '">';
+            } elseif (!empty($_GET['categoria'])) {
+                echo '<input type="hidden" name="categoria" value="' . esc_attr(sanitize_title($_GET['categoria'])) . '">';
+            }
+            ?>
+            <button class="mp-search-btn" type="submit"><?php echo esc_html($a['title_search']); ?></button>
+        </form>
         <?php if ($selected_term instanceof WP_Term): ?>
             <span class="badge-cat">Categoria: <?= esc_html($selected_term->name); ?></span>
-        <?php else: ?>
-            <span class="badge-cat" style="opacity:.8">Todos os artigos</span>
         <?php endif; ?>
+
     </div>
+
 
     <div class="grid-artigos-container">
         <?php
@@ -229,7 +287,6 @@ add_shortcode('grid_artigos', function ($atts = []) {
                         }, $tags); ?>
                         <div class="meta"><?= implode(', ', $tags_formatadas); ?></div>
                     <?php endif; ?>
-
                     <a class="btn-leia" href="<?= esc_url(get_url_artigo($post_id)); ?>">Ler mais</a>
                 </div>
             <?php
@@ -241,8 +298,16 @@ add_shortcode('grid_artigos', function ($atts = []) {
     </div>
 
     <?php
-    // Paginação (se per_page != -1)
+    // Paginação (se per_page != -1), preservando q e categoria
     if (intval($a['per_page']) !== -1 && $query->max_num_pages > 1) {
+        $add_args = [];
+        if ($q !== '') $add_args['q'] = $q;
+        if ($selected_term instanceof WP_Term) {
+            $add_args['cat'] = $selected_term->term_id;
+        } elseif (!empty($_GET['categoria'])) {
+            $add_args['categoria'] = sanitize_title($_GET['categoria']);
+        }
+
         echo '<div class="grid-artigos-pagination">';
         echo paginate_links([
                 'total' => $query->max_num_pages,
@@ -250,6 +315,7 @@ add_shortcode('grid_artigos', function ($atts = []) {
                 'mid_size' => 1,
                 'prev_text' => '« Anteriores',
                 'next_text' => 'Próximos »',
+                'add_args' => $add_args,
         ]);
         echo '</div>';
     }

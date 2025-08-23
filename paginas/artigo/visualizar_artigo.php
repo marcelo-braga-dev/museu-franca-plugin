@@ -50,14 +50,14 @@ add_shortcode('visualizar_artigo', function () {
         }
 
         .artigo-resumo strong {
-            display: block;
-            margin-bottom: 8px;
+            /*display: block;*/
+            /*margin-bottom: 8px;*/
         }
 
         .artigo-resumo .info-inline {
             font-size: 11px;
-            display: flex;
-            gap: 20px;
+            /*display: flex;*/
+            /*gap: 20px;*/
             flex-wrap: wrap;
             margin-top: 10px;
         }
@@ -171,10 +171,9 @@ add_shortcode('visualizar_artigo', function () {
         $capa_full = get_the_post_thumbnail_url($post_id, 'full');
         if ($capa_url && $capa_full) :
             ?>
-            <img src="<?= esc_url($capa_url); ?>" alt="Capa" style="cursor: zoom-in;"
+            <img src="<?= esc_url($capa_url); ?>" alt="Capa" style="cursor: zoom-in; max-height: 350px"
                  onclick="abrirLightbox('<?= esc_url($capa_full); ?>')">
         <?php endif; ?>
-
 
         <?php if (!empty($post->post_excerpt)) : ?>
             <div class="artigo-resumo">
@@ -184,6 +183,7 @@ add_shortcode('visualizar_artigo', function () {
                     <?php if (!empty($categorias)) : ?>
                         <strong>Categoria:</strong> <?= esc_html(implode(', ', $categorias)); ?>
                     <?php endif; ?>
+                    <br/>
                     <?php if (!empty($tags)) :
                         $tags_formatadas = array_map(function ($tag) {
                             return '#' . esc_html($tag);
@@ -195,7 +195,9 @@ add_shortcode('visualizar_artigo', function () {
             </div>
         <?php endif; ?>
 
-        <h2><?= esc_html($post->post_title); ?></h2>
+        <div style="margin-top: 50px">
+            <h2><?= esc_html($post->post_title); ?></h2>
+        </div>
 
         <div class="artigo-conteudo">
             <?= apply_filters('the_content', $post->post_content); ?>
@@ -249,6 +251,15 @@ add_shortcode('visualizar_artigo', function () {
             echo '</ul>';
         }
         ?>
+    </div>
+
+    <div style="border: 1px solid #e1e1e1; padding: 15px; border-radius: 5px; margin-bottom: 20px">
+        <small style="color: #5c5c5d">
+            <b>Aviso de Responsabilidade</b><br/>
+            Os conteúdos disponibilizados neste site são de uso exclusivo para fins informativos e pessoais. Qualquer
+            cópia, reprodução, distribuição ou utilização indevida é de inteira responsabilidade do usuário que a
+            praticar, estando sujeito às medidas legais cabíveis.
+        </small>
     </div>
 
     <!-- Lightbox -->

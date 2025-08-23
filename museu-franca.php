@@ -9,18 +9,22 @@
 if (!defined('ABSPATH')) exit;
 
 // Register post type
-add_action('init', function() {
+add_action('init', function () {
     register_post_type('artigo', [
         'labels' => [
-            'name' => 'Artigos',
-            'singular_name' => 'Artigo'
+            'name'          => 'Artigos',
+            'singular_name' => 'Artigo',
         ],
-        'public' => true,
-        'has_archive' => true,
-        'supports' => ['title', 'editor', 'thumbnail', 'author'],
-        'taxonomies' => ['category', 'post_tag'],
-        'rewrite' => ['slug' => 'artigos'],
-        'show_in_rest' => true
+        'public'             => true,
+        'publicly_queryable' => true,
+        'exclude_from_search'=> false,   // <- ESSENCIAL
+        'has_archive'        => true,
+        'supports'           => ['title', 'editor', 'thumbnail', 'author', 'excerpt'],
+        'taxonomies'         => ['category', 'post_tag'],
+        'rewrite'            => ['slug' => 'artigos'],
+        'show_in_rest'       => true,
+        'map_meta_cap'       => true,
+        'query_var'          => true,
     ]);
 });
 
@@ -35,25 +39,8 @@ add_action('after_setup_theme', function () {
 });
 
 // includes
-require_once __DIR__ . '/assets/vlibras.php';
-
 require_once __DIR__ . '/functions/functions.php';
-
-require_once __DIR__ . '/paginas/login_form.php';
-
-require_once __DIR__ . '/paginas/artigo/visualizar_artigo.php';
-require_once __DIR__ . '/paginas/artigo/grid_artigos.php';
-
-require_once __DIR__ . '/paginas/minha-conta/painel_usuario.php';
-require_once __DIR__ . '/paginas/minha-conta/submeter_artigo.php';
-require_once __DIR__ . '/paginas/minha-conta/meus_artigos.php';
-require_once __DIR__ . '/paginas/minha-conta/editar_artigo.php';
-
-require_once __DIR__ . '/paginas/login/login.php';
-require_once __DIR__ . '/paginas/login/cadastro.php';
-require_once __DIR__ . '/paginas/login/menu_cabecalho.php';
-
-require_once __DIR__ . '/layout/menu_categorias.php';
+require_once __DIR__ . '/functions/includes.php';
 
 
 

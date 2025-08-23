@@ -24,5 +24,15 @@ function redirect_cadastro() {
     return esc_url($url);
 }
 
+function mp_increment_artigo_views()
+{
+    if (is_singular('artigo')) {
+        $post_id = get_queried_object_id();
+        $views = (int)get_post_meta($post_id, '_views', true);
+        update_post_meta($post_id, '_views', $views + 1);
+    }
+}
+
+add_action('wp', 'mp_increment_artigo_views');
 
 
