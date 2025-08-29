@@ -11,20 +11,17 @@ if (!defined('ABSPATH')) exit;
 // Register post type
 add_action('init', function () {
     register_post_type('artigo', [
-        'labels' => [
-            'name'          => 'Artigos',
-            'singular_name' => 'Artigo',
-        ],
-        'public'             => true,
+        'labels' => ['name' => 'Artigos', 'singular_name' => 'Artigo'],
+        'public' => true,
         'publicly_queryable' => true,
-        'exclude_from_search'=> false,   // <- ESSENCIAL
-        'has_archive'        => true,
-        'supports'           => ['title', 'editor', 'thumbnail', 'author', 'excerpt'],
-        'taxonomies'         => ['category', 'post_tag'],
-        'rewrite'            => ['slug' => 'artigos'],
-        'show_in_rest'       => true,
-        'map_meta_cap'       => true,
-        'query_var'          => true,
+        'exclude_from_search' => false,
+        'has_archive' => true,
+        'supports' => ['title', 'editor', 'thumbnail', 'author', 'excerpt'],
+        'taxonomies' => ['category', 'post_tag'],
+        'rewrite' => ['slug' => 'artigos'],
+        'show_in_rest' => true,
+        'map_meta_cap' => true,
+        'query_var' => true,
     ]);
 });
 
@@ -34,18 +31,10 @@ add_action('wp_enqueue_scripts', function () {
 
 add_action('after_setup_theme', function () {
     if (!current_user_can('administrator')) {
-         show_admin_bar(false);
-     }
+        show_admin_bar(false);
+    }
 });
 
 // includes
 require_once __DIR__ . '/functions/functions.php';
 require_once __DIR__ . '/functions/includes.php';
-
-
-
-
-
-
-
-

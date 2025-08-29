@@ -35,4 +35,12 @@ function mp_increment_artigo_views()
 
 add_action('wp', 'mp_increment_artigo_views');
 
+/**
+ * ===== Último acesso (salvar no login) =====
+ * Armazena o timestamp do último login em user_meta 'last_login'
+ */
+add_action('wp_login', function ($user_login, $user) {
+    update_user_meta($user->ID, 'last_login', current_time('timestamp'));
+}, 10, 2);
+
 
