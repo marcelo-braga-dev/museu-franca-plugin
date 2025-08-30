@@ -5,7 +5,6 @@ if (!is_user_logged_in()) {
 }
 
 // ===== Exclusão segura com nonce =====
-// ===== Exclusão segura com nonce =====
 if (isset($_GET['excluir'], $_GET['_wpnonce']) && is_numeric($_GET['excluir'])) {
     $id    = intval($_GET['excluir']);
     $nonce = sanitize_text_field(wp_unslash($_GET['_wpnonce']));
@@ -23,12 +22,12 @@ if (isset($_GET['excluir'], $_GET['_wpnonce']) && is_numeric($_GET['excluir'])) 
             // base sem os parâmetros de ação
             $target = remove_query_arg(['excluir', '_wpnonce', 'paged'], wp_get_referer() ?: '');
 
-            // fallback: se não houver referer, usa a URL atual sem os args de ação
+            // fallback
             if (!$target) {
                 $target = remove_query_arg(['excluir', '_wpnonce', 'paged'], home_url(add_query_arg([])));
             }
 
-            // adiciona aviso de sucesso
+            // aviso de sucesso
             $target = add_query_arg(['ta_ok' => 1], $target);
 
             // reanexa a aba, se existir
@@ -49,7 +48,7 @@ $paged = max(1, get_query_var('paged') ?: get_query_var('page') ?: (isset($_GET[
 $query = new WP_Query([
         'post_type'      => 'artigo',
         'post_status'    => ['publish', 'pending'], // exibe tudo relevante
-        'posts_per_page' => 6,
+        'posts_per_page' => 12,
         'paged'          => $paged,
         'orderby'        => 'date',
         'order'          => 'DESC',
@@ -62,7 +61,7 @@ $mk_url = function ($args = []) {
     return esc_url(add_query_arg($args, $base));
 };
 
-// Detecta anexos (mesma lógica do outro shortcode)
+// Detecta anexos
 $tem_imagens = function ($post_id) {
     $imagens = (array)get_post_meta($post_id, 'imagem_adicional', false);
     $imagens = array_filter($imagens, fn($v) => !empty($v) && intval($v) > 0);
@@ -81,28 +80,26 @@ $tem_pdf = function ($post_id) {
         if (!empty(array_filter($vals))) return true;
     }
     $pdfs = get_children([
-            'post_parent'   => $post_id,
-            'post_type'     => 'attachment',
-            'post_mime_type'=> 'application/pdf',
-            'numberposts'   => 1,
-            'fields'        => 'ids',
+            'post_parent'    => $post_id,
+            'post_type'      => 'attachment',
+            'post_mime_type' => 'application/pdf',
+            'numberposts'    => 1,
+            'fields'         => 'ids',
     ]);
     if (!empty($pdfs)) return true;
     $content = (string)get_post_field('post_content', $post_id);
     return (bool)preg_match('~https?://\S+\.pdf(\b|$)~i', $content);
 };
 
-// ===== Helper: monta "Pai > Filho" para uma categoria =====
+// Caminho "Pai > Filho" para categoria
 $cat_path = function (WP_Term $term) {
     $trail = [];
     $t = $term;
-    // sobe na árvore até a raiz
     while ($t && $t->parent) {
         $trail[] = $t->name;
         $t = get_term($t->parent, 'category');
         if ($t instanceof WP_Error) break;
     }
-    // adiciona a raiz (ou a própria, se não tiver pai)
     if ($t && $t instanceof WP_Term) {
         $trail[] = $t->name;
     } elseif (empty($trail)) {
@@ -115,325 +112,80 @@ $cat_path = function (WP_Term $term) {
 ob_start();
 ?>
     <style>
-        :root {
-            --brand: #992d17;
-            --text: #1f2937;
-            --muted: #64748b;
-            --stroke: #e5e7eb;
-            --card: #ffffff;
-            --radius: 14px;
-            --radius-sm: 10px;
-            --shadow: 0 8px 22px rgba(0, 0, 0, .06);
+        :root{
+            --brand:#992d17; --text:#1f2937; --muted:#64748b; --stroke:#e5e7eb; --card:#fff;
+            --radius:14px; --radius-sm:10px; --shadow:0 8px 22px rgba(0,0,0,.06);
         }
+        .ta-wrap{max-width:1200px;margin:0 auto;padding:clamp(12px,2.5vw,24px)}
+        .ta-title{margin:4px 0 18px;font-size:20px;line-height:1.25;color:var(--text);font-weight:800;letter-spacing:-.01em;display:flex;align-items:center;gap:8px}
+        .ta-alert{border:1px solid var(--stroke);background:#ecfdf5;color:#065f46;padding:12px 14px;border-radius:10px;margin:8px 0 16px}
+        .ta-grid{display:grid;gap:clamp(12px,2.2vw,20px);grid-template-columns:1fr}
+        @media(min-width:640px){.ta-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+        @media(min-width:1024px){.ta-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
+        @media(min-width:1280px){.ta-grid{grid-template-columns:repeat(3,minmax(0,1fr))}}
 
-        .ta-wrap {
-            max-width: 1200px;
-            margin: 0 auto;
-            padding: clamp(12px, 2.5vw, 24px);
-        }
-
-        .ta-title {
-            margin: 4px 0 18px;
-            font-size: 20px;
-            line-height: 1.25;
-            color: var(--text);
-            font-weight: 800;
-            letter-spacing: -.01em;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-
-        /* Alertas */
-        .ta-alert {
-            border: 1px solid var(--stroke);
-            background: #ecfdf5;
-            color: #065f46;
-            padding: 12px 14px;
-            border-radius: 10px;
-            margin: 8px 0 16px;
-        }
-
-        /* Grid mobile-first */
-        .ta-grid {
-            display: grid;
-            gap: clamp(12px, 2.2vw, 20px);
-            grid-template-columns: 1fr; /* 1 coluna no mobile */
-        }
-
-        @media (min-width: 640px) {
-            .ta-grid {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
-        }
-
-        @media (min-width: 1024px) {
-            .ta-grid {
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-            }
-        }
-
-        @media (min-width: 1280px) {
-            .ta-grid {
-                grid-template-columns: repeat(3, minmax(0, 1fr));
-            }
-        }
-
-        /* Card */
-        .ta-card {
-            display: grid;
-            grid-template-rows: auto 1fr auto;
-            gap: 10px;
-            background: var(--card);
-            border: 1px solid var(--stroke);
-            border-radius: var(--radius);
-            box-shadow: var(--shadow);
-            overflow: hidden;
-            transition: transform .18s ease, box-shadow .18s ease, border-color .18s ease;
-        }
-
-        .ta-card:focus-within,
-        .ta-card:hover {
-            transform: translateY(-2px);
-            border-color: #d1d5db;
-            box-shadow: 0 12px 28px rgba(0, 0, 0, .08);
-        }
+        .ta-card{display:grid;grid-template-rows:auto 1fr auto;gap:10px;background:var(--card);border:1px solid var(--stroke);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden;transition:transform .18s ease, box-shadow .18s ease, border-color .18s ease}
+        .ta-card:focus-within,.ta-card:hover{transform:translateY(-2px);border-color:#d1d5db;box-shadow:0 12px 28px rgba(0,0,0,.08)}
 
         /* Media 16:9 */
-        .ta-card__media {
-            position: relative;
-            width: 100%;
-            aspect-ratio: 16/9;
-            background: #f8fafc;
-            overflow: hidden;
-        }
+        .ta-card__media{position:relative;width:100%;aspect-ratio:16/9;background:#f8fafc;overflow:hidden}
+        .ta-card__media img{width:100%;height:100%;object-fit:cover;display:block}
 
-        .ta-card__media img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
+        /* BADGES sobre a capa (canto inferior esquerdo) */
+        .ta-media-badges{
+            position:absolute;left:8px;bottom:8px;display:flex;gap:6px;z-index:2
         }
+        .ta-media-badge{
+            display:inline-flex;align-items:center;justify-content:center;
+            width:28px;height:28px;border-radius:999px;
+            background:rgba(255,255,255,.85); /* leve translúcido */
+            border:1px solid rgba(0,0,0,.08);
+            backdrop-filter:saturate(1.2) blur(2px);
+            -webkit-backdrop-filter:saturate(1.2) blur(2px);
+            box-shadow:0 2px 6px rgba(0,0,0,.06);
+            transition:transform .12s ease, background .15s ease, border-color .15s ease
+        }
+        .ta-media-badge:hover{transform:translateY(-1px);background:#fff;border-color:#e5e7eb}
+        .ta-media-badge i{font-size:14px;line-height:1}
+
+        .ta-attach--yt{color:#ff0000}
+        .ta-attach--pdf{color:#d32f2f}
+        .ta-attach--img{color:#2e7d32}
 
         /* Conteúdo */
-        .ta-card__body {
-            padding: 12px 14px 0;
-            display: grid;
-            gap: 8px;
-        }
-
-        .ta-card__title {
-            font-size: clamp(15px, 1.6vw, 17px);
-            font-weight: 600;
-            color: #0f172a;
-            margin: 0;
-            line-height: 1.3;
-            display: -webkit-box;
-            -webkit-line-clamp: 2;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-height: calc(1.3em * 2);
-        }
-
-        .ta-card__excerpt {
-            font-size: 14px;
-            color: var(--muted);
-            line-height: 1.45;
-            margin: 0;
-            display: -webkit-box;
-            -webkit-line-clamp: 3;
-            -webkit-box-orient: vertical;
-            overflow: hidden;
-            text-overflow: ellipsis;
-            min-height: calc(1.45em * 3);
-        }
-
-        .ta-meta {
-            font-size: 12px;
-            color: #475569;
-            display: block;
-            margin: 0;
-        }
+        .ta-card__body{padding:12px 14px 0;display:grid;gap:8px}
+        .ta-card__title{font-size:clamp(13px,1.6vw,15px);font-weight:600;color:#0f172a;margin:0;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;text-overflow:ellipsis;min-height:calc(1.3em * 2)}
+        .ta-meta{font-size:12px;color:#475569;display:block;margin:0}
 
         /* Chips */
-        .ta-chips {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 6px;
-            margin-top: 4px;
-            min-width: 0; /* permite encolher */
-        }
-
-        .ta-chip {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            color: #334155;
-            white-space: nowrap;
-            max-width: 100%;
-            font-size: 11px;
-            justify-content: center;
-            padding: 0 4px;
-            height: 18px;
-            line-height: 18px;
-            font-weight: 500;
-            min-width: 0;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
-
-        .ta-chip-category {
-            display: inline-flex;
-            align-items: center;
-            border-radius: 999px;
-            padding: 0 10px;
-            font-size: 12px;
-            font-weight: 500;
-            line-height: 1.4;
-            color: #334155;
-            background: #f8fafc;
-            border: 1px solid #e2e8f0;
-            min-width: 0;
-            max-width: 100%;
-            overflow: hidden;
-            white-space: nowrap;
-            text-overflow: ellipsis;
-        }
-
-        @media (min-width: 480px) {
-            .ta-chip,
-            .ta-chip-category {
-                max-width: 220px;
-            }
-        }
-
-        /* Anexos */
-        .ta-attach {
-            display: flex;
-            gap: 8px;
-            align-items: center;
-        }
-
-        .ta-attach__badge {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            width: 28px;
-            height: 28px;
-            border-radius: 50%;
-            background: #f3f4f6;
-            border: 1px solid #e5e7eb;
-            transition: transform .12s, background .2s, border-color .2s;
-        }
-
-        .ta-attach__badge:hover {
-            transform: translateY(-1px);
-            background: #eef2f7;
-            border-color: #dbe2ea;
-        }
-
-        .ta-attach__badge i {
-            font-size: 14px;
-            line-height: 1;
-        }
-
-        .ta-attach--yt { color: #ff0000; }
-        .ta-attach--pdf { color: #d32f2f; }
-        .ta-attach--img { color: #2e7d32; }
+        .ta-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px;min-width:0}
+        .ta-chip-category{display:inline-flex;align-items:center;border-radius:999px;padding:0 10px;font-size:12px;font-weight:500;line-height:1.4;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;min-width:0;max-width:100%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+        @media(min-width:480px){.ta-chip-category{max-width:220px}}
 
         /* Rodapé */
-        .ta-card__footer {
-            padding: 10px 14px 14px;
-            display: flex;
-            gap: 8px;
-            flex-wrap: wrap;
-            align-items: center;
-        }
+        .ta-card__footer{padding:10px 14px 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+        .ta-btn{display:inline-flex;align-items:center;gap:5px;padding:9px 9px;border-radius:10px;text-decoration:none;font-weight:800;font-size:13px;line-height:1;transition:background .15s,color .15s,border-color .15s,transform .02s;border:1px solid #e2e8f0;background:#fff}
+        .ta-btn:active{transform:translateY(1px)}
+        .ta-btn--primary{color:var(--brand)}
+        .ta-btn--primary:hover{border-color:var(--brand);background:rgba(153,45,23,.06)}
+        .ta-btn--edit{color:#16a34a}.ta-btn--edit:hover{border-color:#16a34a;background:#f0fdf4}
+        .ta-btn--delete{color:#ef4444}.ta-btn--delete:hover{background:#fef2f2;border-color:#ef4444}
 
-        .ta-btn {
-            display: inline-flex;
-            align-items: center;
-            gap: 5px;
-            padding: 9px 9px;
-            border-radius: 10px;
-            text-decoration: none;
-            font-weight: 800;
-            font-size: 13px;
-            line-height: 1;
-            transition: background .15s, color .15s, border-color .15s, transform .02s;
-        }
-
-        .ta-btn:active { transform: translateY(1px); }
-
-        .ta-btn--primary {
-            color: var(--brand);
-            background: #fff;
-            border-color: #e2e8f0;
-        }
-        .ta-btn--primary:hover {
-            border-color: var(--brand);
-            background: rgba(153, 45, 23, .06);
-        }
-
-        .ta-btn--edit { background: #fff; color: #16a34a; }
-        .ta-btn--edit:hover { border-color: #16a34a; color: #16a34a; background: #f0fdf4; }
-
-        .ta-btn--delete { background: #fff; color: #ef4444; }
-        .ta-btn--delete:hover { background: #fef2f2; color: #ef4444; border-color: #ef4444; }
-
-        /* Estado vazio */
-        .ta-empty {
-            padding: 24px;
-            text-align: center;
-            color: var(--muted);
-            border: 1px dashed var(--stroke);
-            border-radius: 12px;
-            background: #fff;
-        }
+        .ta-empty{padding:24px;text-align:center;color:var(--muted);border:1px dashed var(--stroke);border-radius:12px;background:#fff}
 
         /* Paginação */
-        .ta-pag {
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            margin-top: 16px;
-        }
-        .ta-pag a, .ta-pag span {
-            padding: 8px 12px;
-            border: 1px solid #e6e8eb;
-            border-radius: 10px;
-            text-decoration: none;
-            color: #374151;
-            font-size: 13px;
-            transition: background .2s, border-color .2s;
-        }
-        .ta-pag a:hover { background: #f8fafc; border-color: #dbe2ea; }
-        .ta-pag .current {
-            background: var(--brand);
-            color: #fff;
-            border-color: var(--brand);
-        }
+        .ta-pag{display:flex;justify-content:center;align-items:center;gap:8px;margin-top:16px}
+        .ta-pag a,.ta-pag span{padding:8px 12px;border:1px solid #e6e8eb;border-radius:10px;text-decoration:none;color:#374151;font-size:13px;transition:background .2s,border-color .2s}
+        .ta-pag a:hover{background:#f8fafc;border-color:#dbe2ea}
+        .ta-pag .current{background:var(--brand);color:#fff;border-color:var(--brand)}
 
-        .ta-status {
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            padding: 0 12px;
-            height: 28px;
-            line-height: 28px;
-            font-size: 12px;
-            font-weight: 700;
-            border-radius: 999px;
-            white-space: nowrap;
-        }
-        .ta-status--publish { background: #dcfce7; color: #166534; border: 1px solid #86efac; }
-        .ta-status--pending { background: #dbeafe; color: #1e3a8a; border: 1px solid #93c5fd; }
-        .ta-status--draft   { background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; }
+        .ta-status{display:inline-flex;align-items:center;justify-content:center;padding:0 12px;height:28px;line-height:28px;font-size:12px;font-weight:700;border-radius:999px;white-space:nowrap}
+        .ta-status--publish{background:#dcfce7;color:#166534;border:1px solid #86efac}
+        .ta-status--pending{background:#dbeafe;color:#1e3a8a;border:1px solid #93c5fd}
+        .ta-status--draft{background:#f3f4f6;color:#374151;border:1px solid #d1d5db}
 
-        @media (prefers-reduced-motion: reduce) {
-            .ta-card, .ta-btn, .ta-attach__badge { transition: none; }
+        @media (prefers-reduced-motion: reduce){
+            .ta-card,.ta-btn,.ta-media-badge{transition:none}
         }
     </style>
 
@@ -450,18 +202,17 @@ ob_start();
         <?php if ($query->have_posts()) : ?>
             <div class="ta-grid">
                 <?php while ($query->have_posts()) : $query->the_post();
-                    $post_id    = get_the_ID();
-                    $thumb      = get_the_post_thumbnail_url($post_id, 'medium') ?: '/wp-content/uploads/2025/07/logo-4.png';
-                    // Buscamos as categorias com dados completos para montar a hierarquia:
-                    $categorias = wp_get_post_terms($post_id, 'category', ['fields' => 'all']);
-                    $author_id  = get_post_field('post_author', $post_id);
-                    $author_name= get_the_author_meta('display_name', $author_id);
-                    $status     = get_post_status($post_id);
-                    $status_obj = $status ? get_post_status_object($status) : null;
+                    $post_id     = get_the_ID();
+                    $thumb       = get_the_post_thumbnail_url($post_id, 'medium') ?: '/wp-content/uploads/2025/07/logo-4.png';
+                    $categorias  = wp_get_post_terms($post_id, 'category', ['fields' => 'all']);
+                    $author_id   = get_post_field('post_author', $post_id);
+                    $author_name = get_the_author_meta('display_name', $author_id);
+                    $status      = get_post_status($post_id);
+                    $status_obj  = $status ? get_post_status_object($status) : null;
 
-                    $status_class = ($status === 'publish')
-                            ? 'ta-status ta-status--publish'
-                            : (($status === 'pending') ? 'ta-status ta-status--pending' : 'ta-status ta-status--draft');
+                    $status_class = ($status === 'publish') ? 'ta-status ta-status--publish'
+                            : (($status === 'pending') ? 'ta-status ta-status--pending'
+                                    : 'ta-status ta-status--draft');
 
                     $url_ver = function () use ($post_id) {
                         $u = function_exists('get_url_artigo') ? get_url_artigo($post_id) : get_permalink($post_id);
@@ -472,14 +223,10 @@ ob_start();
                     };
                     $url_deletar = function () use ($post_id, $mk_url) {
                         $nonce = wp_create_nonce('excluir_artigo_' . $post_id);
-                        // herda a aba corrente porque $mk_url preserva a querystring atual (menos excluir/_wpnonce/ta_ok/paged)
-                        return $mk_url([
-                                'excluir'  => $post_id,
-                                '_wpnonce' => $nonce
-                        ]);
+                        return $mk_url(['excluir' => $post_id, '_wpnonce' => $nonce]);
                     };
 
-                    // Anexos
+                    // Tipos de anexos
                     $hasYT  = $tem_youtube($post_id);
                     $hasPDF = $tem_pdf($post_id);
                     $hasIMG = $tem_imagens($post_id);
@@ -491,6 +238,26 @@ ob_start();
                         <a class="ta-card__media" href="<?= $url_ver(); ?>"
                            aria-label="Abrir: <?= esc_attr(get_the_title()); ?>">
                             <img src="<?= esc_url($thumb); ?>" alt="<?= esc_attr(get_the_title()); ?>" loading="lazy" decoding="async">
+
+                            <?php if ($hasYT || $hasPDF || $hasIMG): ?>
+                                <div class="ta-media-badges" aria-label="Tipos de conteúdo">
+                                    <?php if ($hasYT): ?>
+                                        <span class="ta-media-badge" title="Possui vídeo do YouTube" aria-label="Vídeo do YouTube">
+                                        <i class="fa-brands fa-youtube ta-attach--yt" aria-hidden="true"></i>
+                                    </span>
+                                    <?php endif; ?>
+                                    <?php if ($hasPDF): ?>
+                                        <span class="ta-media-badge" title="Possui PDF" aria-label="PDF">
+                                        <i class="fa-regular fa-file ta-attach--pdf" aria-hidden="true"></i>
+                                    </span>
+                                    <?php endif; ?>
+                                    <?php if ($hasIMG): ?>
+                                        <span class="ta-media-badge" title="Possui galeria de imagens" aria-label="Galeria de imagens">
+                                        <i class="fa-regular fa-images ta-attach--img" aria-hidden="true"></i>
+                                    </span>
+                                    <?php endif; ?>
+                                </div>
+                            <?php endif; ?>
                         </a>
 
                         <div class="ta-card__body">
@@ -498,18 +265,13 @@ ob_start();
                                 <h3 class="ta-card__title"><?= esc_html(get_the_title()); ?></h3>
                             </a>
 
-                            <?php if (get_the_excerpt()) : ?>
-                                <p class="ta-card__excerpt"><?= esc_html(get_the_excerpt()); ?></p>
-                            <?php endif; ?>
-
                             <span class="<?= esc_attr($status_class); ?>">
-                                <?= esc_html($status_obj ? $status_obj->label : ucfirst($status)); ?>
-                            </span>
+                            <?= esc_html($status_obj ? $status_obj->label : ucfirst($status)); ?>
+                        </span>
 
                             <?php if (!empty($categorias) && !is_wp_error($categorias)) : ?>
                                 <div class="ta-chips" aria-label="Categorias">
                                     <?php
-                                    // evita caminhos repetidos quando o post tem várias categorias irmãs
                                     $rendered = [];
                                     foreach ($categorias as $term) :
                                         if (!($term instanceof WP_Term)) continue;
@@ -518,47 +280,15 @@ ob_start();
                                         $rendered[$label] = true;
                                         ?>
                                         <span class="ta-chip-category" title="<?= esc_attr($label); ?>">
-                                            <?= esc_html($label); ?>
-                                        </span>
+                                        <?= esc_html($label); ?>
+                                    </span>
                                     <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-
-                            <?php
-                            $tags_terms = get_the_terms($post_id, 'post_tag');
-                            if ($tags_terms && !is_wp_error($tags_terms)) : ?>
-                                <div class="ta-chips" aria-label="Palavras-chave">
-                                    <?php foreach ($tags_terms as $term) :
-                                        $name = trim(wp_strip_all_tags($term->name));
-                                        if ($name === '') continue; ?>
-                                        <span class="ta-chip" title="<?= esc_attr($name); ?>">#<?= esc_html($name); ?></span>
-                                    <?php endforeach; ?>
-                                </div>
-                            <?php endif; ?>
-
-                            <?php if ($hasYT || $hasPDF || $hasIMG): ?>
-                                <div class="ta-attach" aria-label="Anexos">
-                                    <?php if ($hasYT): ?>
-                                        <span class="ta-attach__badge" title="Possui vídeo do YouTube">
-                                            <i class="fa-brands fa-youtube ta-attach--yt" aria-hidden="true"></i>
-                                        </span>
-                                    <?php endif; ?>
-                                    <?php if ($hasPDF): ?>
-                                        <span class="ta-attach__badge" title="Possui PDF">
-                                            <i class="fa-regular fa-file ta-attach--pdf" aria-hidden="true"></i>
-                                        </span>
-                                    <?php endif; ?>
-                                    <?php if ($hasIMG): ?>
-                                        <span class="ta-attach__badge" title="Possui galeria de imagens">
-                                            <i class="fa-regular fa-images ta-attach--img" aria-hidden="true"></i>
-                                        </span>
-                                    <?php endif; ?>
                                 </div>
                             <?php endif; ?>
 
                             <span class="ta-meta" style="margin-top:4px;">
-                                <strong>Por:</strong> <?= esc_html($author_name); ?>
-                            </span>
+                            <strong>Por:</strong> <?= esc_html($author_name); ?>
+                        </span>
                         </div>
 
                         <div class="ta-card__footer">
@@ -602,8 +332,7 @@ ob_start();
             if ($links) {
                 echo '<nav class="ta-pag" aria-label="Paginação">';
                 foreach ($links as $link) {
-                    // mantém classes geradas pelo WP (current, etc.)
-                    echo $link;
+                    echo $link; // mantém classes geradas pelo WP
                 }
                 echo '</nav>';
             }

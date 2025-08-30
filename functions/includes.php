@@ -58,6 +58,6 @@ function require_all_php(string $baseDir, array $exclude = [], array $ignoreFile
 $base = realpath(__DIR__ . '/..');
 require_all_php(
     $base,
-    ['vendor', 'node_modules', 'cache', 'storage', 'components'], // pastas a ignorar
+    ['vendor', 'node_modules', 'cache', 'storage', 'components', 'templates'], // pastas a ignorar
     [__FILE__, __DIR__ . '/../museu-franca.php', __DIR__ . '/functions.php'] // ignora este arquivo
 );

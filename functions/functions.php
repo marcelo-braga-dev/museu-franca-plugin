@@ -1,12 +1,7 @@
 <?php
 
 function get_url_artigo($post_id) {
-    if (get_post_type($post_id) !== 'artigo') {
-        return '';
-    }
-    
-    $url = site_url('/publicacoes/artigo/?id=' . intval($post_id));
-    return esc_url($url);
+   return get_permalink($post_id);
 }
 
 function redirect_minha_conta() {

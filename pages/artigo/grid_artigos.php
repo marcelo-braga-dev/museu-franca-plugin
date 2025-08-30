@@ -383,10 +383,7 @@ add_shortcode('grid_artigos', function ($atts = []) {
         /* Categorias e Tags como texto */
         .meta-chips {
             display: block;
-            margin-top: 2px;
-            line-height: 1.25;
-            border-block: 1px solid #eee;
-            padding-block: 5px
+            line-height: 1.2;
         }
 
         .chip {
@@ -560,7 +557,7 @@ add_shortcode('grid_artigos', function ($atts = []) {
                             title="<?= esc_html(get_the_title()); ?>"><?= esc_html(get_the_title()); ?></h3>
                     </a>
 
-                    <p title="<?= esc_html($resumo_curto); ?>"><?= esc_html($resumo_curto); ?></p>
+<!--                    <p title="--><?php //= esc_html($resumo_curto); ?><!--">--><?php //= esc_html($resumo_curto); ?><!--</p>-->
 
                     <?php
                     // Categorias como "Pai > Filha"
@@ -582,11 +579,11 @@ add_shortcode('grid_artigos', function ($atts = []) {
                         <small class="autor-meta"><span><strong>Por:</strong> <?= esc_html($author_name); ?></span></small>
                     </div>
 
-                    <div class="acoes-artigo">
-                        <a class="btn-leia" href="<?= esc_url(get_url_artigo($post_id)); ?>">
-                            Ler mais <i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i>
-                        </a>
-                    </div>
+<!--                    <div class="acoes-artigo">-->
+<!--                        <a class="btn-leia" href="--><?php //= esc_url(get_url_artigo($post_id)); ?><!--">-->
+<!--                            Ler mais <i class="fa-solid fa-arrow-right-long" aria-hidden="true"></i>-->
+<!--                        </a>-->
+<!--                    </div>-->
                 </article>
             <?php endwhile;
         else:

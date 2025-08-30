@@ -18,12 +18,24 @@ add_action('init', function () {
         'has_archive' => true,
         'supports' => ['title', 'editor', 'thumbnail', 'author', 'excerpt'],
         'taxonomies' => ['category', 'post_tag'],
-        'rewrite' => ['slug' => 'artigos'],
+        'rewrite' => ['slug' => 'publicacao'],
         'show_in_rest' => true,
         'map_meta_cap' => true,
         'query_var' => true,
     ]);
 });
+
+// Força o uso do template customizado
+add_filter('single_template', function ($template) {
+    if (is_singular('artigo')) {
+        $tpl = plugin_dir_path(__FILE__) . 'templates/single-artigo.php';
+        if (file_exists($tpl)) {
+            return $tpl;
+        }
+    }
+    return $template;
+});
+
 
 add_action('wp_enqueue_scripts', function () {
     wp_enqueue_style('font-awesome-cdn', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css');
@@ -38,3 +50,9 @@ add_action('after_setup_theme', function () {
 // includes
 require_once __DIR__ . '/functions/functions.php';
 require_once __DIR__ . '/functions/includes.php';
+
+
+
+
+
+
