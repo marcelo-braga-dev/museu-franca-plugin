@@ -1,7 +1,9 @@
 <?php
 add_shortcode('painel_usuario', function () {
     if (!is_user_logged_in()) {
-        return '<p>Você precisa estar logado.</p>';
+        $url =  redirect_login();
+        echo "<script>window.location.href = " . json_encode($url) . ";</script>";
+        exit;
     }
 
     // Aba atual (fallback = 'publicar')

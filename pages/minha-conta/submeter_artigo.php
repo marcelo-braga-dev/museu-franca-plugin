@@ -5,14 +5,15 @@
  * - Corrigido: modal de upload só abre após passar nas validações
  * - Corrigido: categoria obrigatória (cliente e servidor)
  * - Corrigido: áudio > 5MB limpa o input e reseta o texto do card
+ * - Corrigido: armazenamento do conteúdo (Quill) com wp_unslash + wp_kses_post e reidratação
  */
 
 add_filter('upload_mimes', function ($m) {
     // formatos extras de áudio
-    $m['aac'] = 'audio/aac';
+    $m['aac']  = 'audio/aac';
     $m['opus'] = 'audio/opus';
     $m['flac'] = 'audio/flac';
-    $m['m4a'] = 'audio/m4a';
+    $m['m4a']  = 'audio/m4a';
     return $m;
 });
 
@@ -28,10 +29,10 @@ add_shortcode('submeter_artigo', function () {
             if ($url === '') return '';
             $url = filter_var($url, FILTER_SANITIZE_URL);
             $patterns = [
-                    '/youtu\.be\/([a-zA-Z0-9_-]{11})/i',
-                    '/youtube\.com\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/i',
-                    '/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i',
-                    '/youtube\.com\/watch\?.*?&v=([a-zA-Z0-9_-]{11})/i'
+                '/youtu\.be\/([a-zA-Z0-9_-]{11})/i',
+                '/youtube\.com\/(?:embed|shorts)\/([a-zA-Z0-9_-]{11})/i',
+                '/youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})/i',
+                '/youtube\.com\/watch\?.*?&v=([a-zA-Z0-9_-]{11})/i'
             ];
             foreach ($patterns as $p) {
                 if (preg_match($p, $url, $m)) return $m[1];
@@ -40,7 +41,8 @@ add_shortcode('submeter_artigo', function () {
         }
     }
 
-    $erro_box = '';
+    $erro_box  = '';
+    $conteudo  = ''; // <- manter o HTML do Quill entre tentativas
 
     // ---------- POST ----------
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['titulo'])) {
@@ -52,16 +54,16 @@ add_shortcode('submeter_artigo', function () {
         }
         // validação de áudio (5MB + tipo)
         $allowed_mimes = [
-                'audio/mpeg', 'audio/mp3',
-                'audio/wav', 'audio/x-wav',
-                'audio/ogg', 'audio/oga',
-                'audio/mp4', 'audio/aac',
-                'audio/webm',
-                'audio/m4a', 'audio/x-m4a',
-                'audio/flac', 'audio/opus'
+            'audio/mpeg', 'audio/mp3',
+            'audio/wav', 'audio/x-wav',
+            'audio/ogg', 'audio/oga',
+            'audio/mp4', 'audio/aac',
+            'audio/webm',
+            'audio/m4a', 'audio/x-m4a',
+            'audio/flac', 'audio/opus'
         ];
         $allowed_exts = ['mp3', 'wav', 'ogg', 'oga', 'mp4', 'aac', 'webm', 'm4a', 'flac', 'opus'];
-        $max_bytes = 5 * 1024 * 1024; // 5MB
+        $max_bytes    = 5 * 1024 * 1024; // 5MB
 
         foreach ($_FILES as $key => $file) {
             if (strpos($key, 'audio_') === 0 && !empty($file['name'])) {
@@ -78,17 +80,25 @@ add_shortcode('submeter_artigo', function () {
 
         if ($erro_box === '') {
             // prossegue criação do post
-            $titulo = sanitize_text_field($_POST['titulo']);
-            $resumo = sanitize_text_field($_POST['resumo']);
-            $conteudo = wp_kses_post($_POST['conteudo']);
+            $titulo   = sanitize_text_field($_POST['titulo']);
+            $resumo   = sanitize_text_field($_POST['resumo']);
+
+            // ===== CORREÇÃO: captura segura do conteúdo HTML do Quill
+            $conteudo_raw = wp_unslash($_POST['conteudo'] ?? '');
+            $conteudo     = wp_kses_post($conteudo_raw);
+            // ============================================
+
+            $user_id = get_current_user_id();
+
+            $status = current_user_can('publish_posts') ? 'publish' : 'pending';
 
             $post_id = wp_insert_post([
-                    'post_title' => $titulo,
-                    'post_excerpt' => $resumo,
-                    'post_content' => $conteudo,
-                    'post_type' => 'artigo',
-                    'post_status' => 'pending',
-                    'post_author' => get_current_user_id()
+                'post_title'   => $titulo,
+                'post_excerpt' => $resumo,
+                'post_content' => $conteudo, // << usa o HTML do Quill
+                'post_type'    => 'artigo',
+                'post_status'  => $status,
+                'post_author'  => $user_id
             ]);
 
             if ($post_id) {
@@ -133,7 +143,7 @@ add_shortcode('submeter_artigo', function () {
                         $img_id = media_handle_upload($key, $post_id);
                         if (!is_wp_error($img_id)) {
                             add_post_meta($post_id, 'imagem_adicional', $img_id);
-                            $indice = explode('_', $key)[1] ?? '';
+                            $indice    = explode('_', $key)[1] ?? '';
                             $descricao = sanitize_text_field($_POST['imagem_descricao_' . $indice] ?? '');
                             if ($descricao !== '') {
                                 add_post_meta($post_id, 'imagem_adicional_descricao_' . $img_id, $descricao);
@@ -148,7 +158,7 @@ add_shortcode('submeter_artigo', function () {
                         $pdf_id = media_handle_upload($key, $post_id);
                         if (!is_wp_error($pdf_id)) {
                             add_post_meta($post_id, 'pdf', $pdf_id);
-                            $indice = explode('_', $key)[1] ?? '';
+                            $indice    = explode('_', $key)[1] ?? '';
                             $descricao = sanitize_text_field($_POST['pdf_descricao_' . $indice] ?? '');
                             if ($descricao !== '') {
                                 add_post_meta($post_id, 'pdf_descricao_' . $pdf_id, $descricao);
@@ -163,7 +173,7 @@ add_shortcode('submeter_artigo', function () {
                         $audio_id = media_handle_upload($key, $post_id);
                         if (!is_wp_error($audio_id)) {
                             add_post_meta($post_id, 'audio', $audio_id);
-                            $indice = explode('_', $key)[1] ?? '';
+                            $indice    = explode('_', $key)[1] ?? '';
                             $descricao = sanitize_text_field($_POST['audio_descricao_' . $indice] ?? '');
                             if ($descricao !== '') {
                                 add_post_meta($post_id, 'audio_descricao_' . $audio_id, $descricao);
@@ -175,15 +185,15 @@ add_shortcode('submeter_artigo', function () {
                 // YouTube
                 foreach ($_POST as $key => $val) {
                     if (strpos($key, 'youtube_url_') === 0) {
-                        $i = substr($key, strlen('youtube_url_'));
+                        $i   = substr($key, strlen('youtube_url_'));
                         $url = esc_url_raw($val);
                         if ($url) {
-                            $desc = sanitize_text_field($_POST['youtube_desc_' . $i] ?? '');
+                            $desc   = sanitize_text_field($_POST['youtube_desc_' . $i] ?? '');
                             $vid_id = mp_extract_youtube_id($url);
                             add_post_meta($post_id, 'youtube_link', [
-                                    'url' => $url,
-                                    'desc' => $desc,
-                                    'video_id' => $vid_id ?: '',
+                                'url'      => $url,
+                                'desc'     => $desc,
+                                'video_id' => $vid_id ?: '',
                             ]);
                         }
                     }
@@ -196,6 +206,10 @@ add_shortcode('submeter_artigo', function () {
             } else {
                 $erro_box .= '• Não foi possível criar a publicação. Tente novamente.<br>';
             }
+        } else {
+            // se houve erro, mantém o conteúdo digitado
+            $conteudo_raw = wp_unslash($_POST['conteudo'] ?? '');
+            $conteudo     = wp_kses_post($conteudo_raw);
         }
     }
 
@@ -596,7 +610,8 @@ add_shortcode('submeter_artigo', function () {
             <div class="grid">
                 <label for="conteudo">Conteúdo</label>
                 <div id="editor"></div>
-                <textarea name="conteudo" id="conteudo" hidden style="display:none"></textarea>
+                <!-- reidrata com o HTML salvo em $conteudo -->
+                <textarea name="conteudo" id="conteudo" hidden style="display:none"><?php echo esc_textarea($conteudo); ?></textarea>
             </div>
 
             <div class="grid">
@@ -820,6 +835,9 @@ add_shortcode('submeter_artigo', function () {
                 ]
             }
         });
+
+        // Reidrata o editor com o conteúdo do PHP
+        quill.root.innerHTML = <?php echo json_encode($conteudo); ?>;
 
         // -------- Utilitários de UI --------
         function mostrarPreview(input) {
@@ -1051,7 +1069,6 @@ add_shortcode('submeter_artigo', function () {
                 const capa = document.getElementById('capa');
                 if (!capa || !capa.files || capa.files.length === 0) {
                     toast('⚠️ Você precisa adicionar uma foto de capa antes de publicar.');
-                    // foca/rola até o card da capa
                     const dz = document.getElementById('hint-capa')?.closest('.drop-zone');
                     if (dz) dz.scrollIntoView({behavior: 'smooth', block: 'center'});
                     return;
@@ -1078,9 +1095,9 @@ add_shortcode('submeter_artigo', function () {
                 // 4) Áudios até 5MB
                 if (!validateAllAudios()) return;
 
-                // 5) Serializa conteúdo do Quill
+                // 5) Serializa conteúdo do Quill (CORREÇÃO: garantir antes do FormData)
                 const hidden = document.getElementById('conteudo');
-                if (hidden && window.quill) hidden.value = quill.root.innerHTML;
+                if (hidden) hidden.value = quill.root.innerHTML;
 
                 // 6) Envia — agora pode abrir o modal
                 const xhr = new XMLHttpRequest();

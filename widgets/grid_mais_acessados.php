@@ -2,21 +2,29 @@
 /**
  * ====== SHORTCODE [destaques_artigos] ======
  * Atributos:
- *  - count: quantidade de cartões (padrão 3)
- *  - title: título da seção (opcional, não exibido — mantenho para compatibilidade)
+ *  - count:           quantidade de cartões (padrão 3)
+ *  - title:           título da seção (apenas compatibilidade)
+ *  - featured_key:    meta key que marca destaque (padrão: mp_featured)
+ *  - featured_value:  valor do meta que indica destaque (padrão: '1')
+ *
+ * Ex.: [destaques_artigos count="6" featured_key="mp_featured" featured_value="1"]
  */
 add_shortcode('destaques_artigos', function ($atts) {
     $a = shortcode_atts([
-            'count' => 3,
-            'title' => 'Destaques',
+        'count'          => 3,
+        'title'          => 'Destaques',
+        'featured_key'   => 'mp_featured',
+        'featured_value' => '1',
     ], $atts, 'destaques_artigos');
+
+    $count          = max(1, (int)$a['count']);
+    $featured_key   = sanitize_key($a['featured_key']);
+    $featured_value = sanitize_text_field($a['featured_value']);
 
     // ----- Helpers (encapsulados) -----
     if (!function_exists('mp_da_get_url_artigo')) {
         function mp_da_get_url_artigo($post_id) {
-            if (function_exists('get_url_artigo')) {
-                return get_url_artigo($post_id);
-            }
+            if (function_exists('get_url_artigo')) return get_url_artigo($post_id);
             return get_permalink($post_id);
         }
     }
@@ -28,26 +36,25 @@ add_shortcode('destaques_artigos', function ($atts) {
          */
         function mp_da_detect_media_types($post_id) {
             $types = [
-                    'image' => false,
-                    'pdf'   => false,
-                    'video' => false,
-                    'audio' => false,
+                'image' => false,
+                'pdf'   => false,
+                'video' => false,
+                'audio' => false,
             ];
 
             // Anexos padrão do WP
             $attachments = get_posts([
-                    'post_type'      => 'attachment',
-                    'post_status'    => 'inherit',
-                    'posts_per_page' => 50,
-                    'post_parent'    => $post_id,
-                    'fields'         => 'ids',
+                'post_type'      => 'attachment',
+                'post_status'    => 'inherit',
+                'posts_per_page' => 50,
+                'post_parent'    => $post_id,
+                'fields'         => 'ids',
             ]);
 
             if (!empty($attachments)) {
                 foreach ($attachments as $aid) {
                     $mime = get_post_mime_type($aid);
                     if (!$mime) continue;
-
                     if (strpos($mime, 'image/') === 0)  $types['image'] = true;
                     if ($mime === 'application/pdf')    $types['pdf']   = true;
                     if (strpos($mime, 'video/') === 0)  $types['video'] = true;
@@ -69,35 +76,47 @@ add_shortcode('destaques_artigos', function ($atts) {
         }
     }
 
-    // ----- Verifica se há ao menos 1 artigo com _views -----
+    // ----- Checa se existe _views para ordenar por popularidade, mas SEMPRE filtrando por destaque -----
     $probe = new WP_Query([
-            'post_type'      => 'artigo',
-            'post_status'    => 'publish',
-            'meta_key'       => '_views',
-            'fields'         => 'ids',
-            'posts_per_page' => 1,
-            'no_found_rows'  => true,
+        'post_type'      => 'artigo',
+        'post_status'    => 'publish',
+        'posts_per_page' => 1,
+        'fields'         => 'ids',
+        'meta_key'       => '_views',
+        'meta_query'     => [[
+            'key'     => $featured_key,
+            'value'   => $featured_value,
+            'compare' => '=',
+        ]],
+        'no_found_rows'  => true,
     ]);
     wp_reset_postdata();
 
-    // ----- Monta argumentos de busca -----
+    // ----- Monta argumentos de busca (SEMPRE com filtro de destaque) -----
     $args = [
-            'post_type'      => 'artigo',
-            'post_status'    => 'publish',
-            'posts_per_page' => (int)$a['count'],
+        'post_type'      => 'artigo',
+        'post_status'    => 'publish',
+        'posts_per_page' => $count,
+        'meta_query'     => [[
+            'key'     => $featured_key,
+            'value'   => $featured_value,
+            'compare' => '=',
+        ]],
+        'no_found_rows'  => true,
     ];
 
+    // Ordenação: se tiver _views, usa como principal; senão, data + comentários
     if ($probe->have_posts()) {
         $args['meta_key'] = '_views';
         $args['orderby']  = [
-                'meta_value_num' => 'DESC',
-                'comment_count'  => 'DESC',
-                'date'           => 'DESC',
+            'meta_value_num' => 'DESC',
+            'comment_count'  => 'DESC',
+            'date'           => 'DESC',
         ];
     } else {
         $args['orderby']  = [
-                'comment_count'  => 'DESC',
-                'date'           => 'DESC',
+            'comment_count'  => 'DESC',
+            'date'           => 'DESC',
         ];
     }
 
@@ -186,10 +205,6 @@ add_shortcode('destaques_artigos', function ($atts) {
             font-size: 14px;
             color: #111827;
         }
-        .mp-media-icons .mp-media-chip[data-type="image"] { /* opcional: leve nuance */ }
-        .mp-media-icons .mp-media-chip[data-type="pdf"]   { }
-        .mp-media-icons .mp-media-chip[data-type="video"] { }
-        .mp-media-icons .mp-media-chip[data-type="audio"] { }
 
         /* Corpo do card com título enxuto */
         .mp-body {
@@ -236,11 +251,11 @@ add_shortcode('destaques_artigos', function ($atts) {
                     <a class="mp-thumb" href="<?= $url; ?>" aria-label="<?php the_title_attribute(); ?>">
                         <?php if ($thumb): ?>
                             <img
-                                    src="<?= esc_url($thumb); ?>"
-                                    alt="<?php echo esc_attr(wp_strip_all_tags(get_the_title())); ?>"
-                                    loading="lazy"
-                                    decoding="async"
-                                    width="800" height="450"
+                                src="<?= esc_url($thumb); ?>"
+                                alt="<?php echo esc_attr(wp_strip_all_tags(get_the_title())); ?>"
+                                loading="lazy"
+                                decoding="async"
+                                width="800" height="450"
                             >
                         <?php else: ?>
                             <div class="mp-placeholder">Sem imagem</div>
@@ -249,22 +264,22 @@ add_shortcode('destaques_artigos', function ($atts) {
                         <span class="mp-thumb__overlay" aria-hidden="true"></span>
 
                         <div class="mp-media-icons" aria-label="Tipos de anexos neste artigo">
-                            <?php if ($types['image']): ?>
+                            <?php if (!empty($types['image'])): ?>
                                 <span class="mp-media-chip" data-type="image" title="Imagens">
                                     <i class="fa-regular fa-images" aria-hidden="true"></i>
                                 </span>
                             <?php endif; ?>
-                            <?php if ($types['pdf']): ?>
+                            <?php if (!empty($types['pdf'])): ?>
                                 <span class="mp-media-chip" data-type="pdf" title="PDF">
                                     <i class="fa-regular fa-file-pdf" aria-hidden="true"></i>
                                 </span>
                             <?php endif; ?>
-                            <?php if ($types['video']): ?>
+                            <?php if (!empty($types['video'])): ?>
                                 <span class="mp-media-chip" data-type="video" title="Vídeo">
                                     <i class="fa-solid fa-play" aria-hidden="true"></i>
                                 </span>
                             <?php endif; ?>
-                            <?php if ($types['audio']): ?>
+                            <?php if (!empty($types['audio'])): ?>
                                 <span class="mp-media-chip" data-type="audio" title="Áudio">
                                     <i class="fa-solid fa-headphones" aria-hidden="true"></i>
                                 </span>

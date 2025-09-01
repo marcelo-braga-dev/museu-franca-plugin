@@ -1,44 +1,45 @@
 <?php
 // ===== Shortcode [widgets_artigos] =====
-// Exemplos de uso:
+// Exemplos:
 // echo do_shortcode('[widgets_artigos mode="related_mix" count="6" post_id="' . $post_id . '" title="Sugeridos pra você"]');
 // [widgets_artigos mode="most_viewed" count="6" title="Mais acessados" meta_views="_views"]
 // [widgets_artigos mode="featured" count="6" title="Destaques"]
 // [widgets_artigos mode="recent" count="6" title="Últimos publicados"]
 // [widgets_artigos mode="category" count="8" cat="historia" title="História"]
 // [widgets_artigos mode="tag" count="8" tag="entrevista" title="Entrevistas"]
-// [widgets_artigos mode="related_mix" count="6" post_id="123" title="Sugeridos pra você"]
+// [widgets_artigos mode="collection" count="8" col="memorias" title="Coleção: Memórias"]
+// [widgets_artigos mode="related_collections" count="6" post_id="123" title="Relacionados por Coleção"]
 
 add_shortcode('widgets_artigos', function ($atts = []) {
     $a = shortcode_atts([
-            'mode'       => 'recent',   // related_category|related_parent|related_tags|related_mix|most_viewed|featured|recent|category|tag
-            'count'      => 20,
-            'post_id'    => '',         // OBRIGATÓRIO (numérico) para modos "related_*"
-            'title'      => '',
-            'meta_views' => '_views',   // para most_viewed
-            'tax'        => '',         // p/ featured por taxonomia (ex.: category)
-            'term'       => '',         // p/ featured por taxonomia (ex.: destaques)
-            'cat'        => '',         // quando mode=category (slug ou id)
-            'tag'        => '',         // quando mode=tag (slug ou id)
+        'mode'       => 'recent',   // related_category|related_parent|related_tags|related_collections|related_mix|most_viewed|featured|recent|category|tag|collection
+        'count'      => 20,
+        'post_id'    => '',         // OBRIGATÓRIO (numérico) para modos "related_*"
+        'title'      => '',
+        'meta_views' => '_views',   // para most_viewed
+        'tax'        => '',         // p/ featured por taxonomia (ex.: category|colecao)
+        'term'       => '',         // p/ featured por taxonomia (slug ou id)
+        'cat'        => '',         // quando mode=category (slug ou id)
+        'tag'        => '',         // quando mode=tag (slug ou id)
+        'col'        => '',         // quando mode=collection (slug ou id) — NOVO
     ], $atts, 'widgets_artigos');
 
     $mode  = sanitize_key($a['mode']);
     $limit = min(20, max(1, intval($a['count'])));
     $title = sanitize_text_field($a['title']);
 
-    // ===== Determinar post base quando for "related_*" (sem 'auto') =====
+    // ===== Determinar post base quando for "related_*"
     $pid = 0;
-    if (in_array($mode, ['related_category', 'related_parent', 'related_tags', 'related_mix'], true)) {
+    if (in_array($mode, ['related_category', 'related_parent', 'related_tags', 'related_collections', 'related_mix'], true)) {
         if (is_numeric($a['post_id'])) {
             $pid = (int) $a['post_id'];
         }
-        // precisa ser um artigo publicado válido
         if ($pid <= 0 || get_post_type($pid) !== 'artigo' || get_post_status($pid) !== 'publish') {
             return '';
         }
     }
 
-    // ===== Função auxiliar p/ relacionados =====
+    // ===== Função auxiliar p/ relacionados (com coleções) =====
     if (!function_exists('mp_widgets_collect_related')) {
         function mp_widgets_collect_related($post_id, $count, $flavor = 'auto')
         {
@@ -46,24 +47,33 @@ add_shortcode('widgets_artigos', function ($atts = []) {
             $picked  = [];
             $exclude = [$post_id];
 
+            // categorias
             $terms_cat  = wp_get_post_terms($post_id, 'category', ['fields' => 'all']);
             $cat_ids    = array_map(fn($t) => intval($t->term_id), $terms_cat);
             $parent_ids = array_values(array_unique(array_filter(array_map(fn($t) => intval($t->parent), $terms_cat))));
+
+            // tags
             $tag_ids    = wp_get_post_terms($post_id, 'post_tag', ['fields' => 'ids']);
+
+            // coleções (se existir a taxonomia)
+            $col_ids = [];
+            if (taxonomy_exists('colecao')) {
+                $col_ids = wp_get_post_terms($post_id, 'colecao', ['fields' => 'ids']);
+            }
 
             $runner = function ($tax_query) use (&$picked, $exclude, $count) {
                 $need = $count - count($picked);
                 if ($need <= 0) return;
 
                 $q = new WP_Query([
-                        'post_type'      => 'artigo',
-                        'post_status'    => 'publish',
-                        'posts_per_page' => $need,
-                        'post__not_in'   => array_merge($exclude, $picked),
-                        'tax_query'      => $tax_query ?: [],
-                        'orderby'        => 'date',
-                        'order'          => 'DESC',
-                        'no_found_rows'  => true,
+                    'post_type'      => 'artigo',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => $need,
+                    'post__not_in'   => array_merge($exclude, $picked),
+                    'tax_query'      => $tax_query ?: [],
+                    'orderby'        => 'date',
+                    'order'          => 'DESC',
+                    'no_found_rows'  => true,
                 ]);
 
                 while ($q->have_posts()) { $q->the_post(); $picked[] = get_the_ID(); }
@@ -71,23 +81,29 @@ add_shortcode('widgets_artigos', function ($atts = []) {
             };
 
             $tx_cat = $cat_ids ? [[
-                    'taxonomy'         => 'category',
-                    'field'            => 'term_id',
-                    'terms'            => $cat_ids,
-                    'include_children' => false
+                'taxonomy'         => 'category',
+                'field'            => 'term_id',
+                'terms'            => $cat_ids,
+                'include_children' => false
             ]] : [];
 
             $tx_par = $parent_ids ? [[
-                    'taxonomy'         => 'category',
-                    'field'            => 'term_id',
-                    'terms'            => $parent_ids,
-                    'include_children' => true
+                'taxonomy'         => 'category',
+                'field'            => 'term_id',
+                'terms'            => $parent_ids,
+                'include_children' => true
             ]] : [];
 
             $tx_tag = $tag_ids ? [[
-                    'taxonomy' => 'post_tag',
-                    'field'    => 'term_id',
-                    'terms'    => $tag_ids
+                'taxonomy' => 'post_tag',
+                'field'    => 'term_id',
+                'terms'    => $tag_ids
+            ]] : [];
+
+            $tx_col = (!empty($col_ids) && taxonomy_exists('colecao')) ? [[
+                'taxonomy' => 'colecao',
+                'field'    => 'term_id',
+                'terms'    => $col_ids
             ]] : [];
 
             switch ($flavor) {
@@ -100,30 +116,41 @@ add_shortcode('widgets_artigos', function ($atts = []) {
                 case 'tags':
                     $runner($tx_tag);
                     break;
+                case 'collections':
+                    $runner($tx_col);
+                    break;
                 case 'mix':
+                    // prioriza interseções quando possível
                     if ($tx_cat && $tx_tag) $runner(array_merge($tx_cat, $tx_tag)); // AND
+                    if (count($picked) < $count && $tx_cat && $tx_col) $runner(array_merge($tx_cat, $tx_col)); // AND
+                    if (count($picked) < $count && $tx_tag && $tx_col) $runner(array_merge($tx_tag, $tx_col)); // AND
+
+                    // fallback em cascata
                     if (count($picked) < $count) $runner($tx_cat);
+                    if (count($picked) < $count) $runner($tx_par);
                     if (count($picked) < $count) $runner($tx_tag);
+                    if (count($picked) < $count) $runner($tx_col);
                     break;
                 case 'auto':
                 default:
-                    // fallback genérico: categoria → pai → tags
+                    // fallback genérico: categoria → pai → tags → coleções
                     $runner($tx_cat);
                     if (count($picked) < $count) $runner($tx_par);
                     if (count($picked) < $count) $runner($tx_tag);
+                    if (count($picked) < $count) $runner($tx_col);
                     break;
             }
 
             // completa com recentes se faltou
             if (count($picked) < $count) {
                 $q = new WP_Query([
-                        'post_type'      => 'artigo',
-                        'post_status'    => 'publish',
-                        'posts_per_page' => $count - count($picked),
-                        'post__not_in'   => array_merge($exclude, $picked),
-                        'orderby'        => 'date',
-                        'order'          => 'DESC',
-                        'no_found_rows'  => true,
+                    'post_type'      => 'artigo',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => $count - count($picked),
+                    'post__not_in'   => array_merge($exclude, $picked),
+                    'orderby'        => 'date',
+                    'order'          => 'DESC',
+                    'no_found_rows'  => true,
                 ]);
                 while ($q->have_posts()) { $q->the_post(); $picked[] = get_the_ID(); }
                 wp_reset_postdata();
@@ -145,19 +172,22 @@ add_shortcode('widgets_artigos', function ($atts = []) {
         case 'related_tags':
             $ids = mp_widgets_collect_related($pid, $limit, 'tags');
             break;
+        case 'related_collections': // NOVO
+            $ids = mp_widgets_collect_related($pid, $limit, 'collections');
+            break;
         case 'related_mix':
-            $ids = mp_widgets_collect_related($pid, $limit, 'mix');
+            $ids = mp_widgets_collect_related($pid, $limit, 'mix'); // agora inclui coleções
             break;
 
         case 'most_viewed':
             $q = new WP_Query([
-                    'post_type'      => 'artigo',
-                    'post_status'    => 'publish',
-                    'posts_per_page' => $limit,
-                    'meta_key'       => sanitize_key($a['meta_views']),
-                    'orderby'        => 'meta_value_num',
-                    'order'          => 'DESC',
-                    'no_found_rows'  => true,
+                'post_type'      => 'artigo',
+                'post_status'    => 'publish',
+                'posts_per_page' => $limit,
+                'meta_key'       => sanitize_key($a['meta_views']),
+                'orderby'        => 'meta_value_num',
+                'order'          => 'DESC',
+                'no_found_rows'  => true,
             ]);
             while ($q->have_posts()) { $q->the_post(); $ids[] = get_the_ID(); }
             wp_reset_postdata();
@@ -167,17 +197,17 @@ add_shortcode('widgets_artigos', function ($atts = []) {
             $tax  = sanitize_key($a['tax']);
             $term = sanitize_text_field($a['term']);
             $args = [
-                    'post_type'      => 'artigo',
-                    'post_status'    => 'publish',
-                    'posts_per_page' => $limit,
-                    'no_found_rows'  => true,
-                    'meta_query'     => [['key' => 'mp_featured', 'value' => '1']],
+                'post_type'      => 'artigo',
+                'post_status'    => 'publish',
+                'posts_per_page' => $limit,
+                'no_found_rows'  => true,
+                'meta_query'     => [['key' => 'mp_featured', 'value' => '1']],
             ];
             if ($tax && $term) {
                 $args['tax_query'] = [[
-                        'taxonomy' => $tax,
-                        'field'    => is_numeric($term) ? 'term_id' : 'slug',
-                        'terms'    => is_numeric($term) ? (int) $term : $term,
+                    'taxonomy' => $tax,
+                    'field'    => is_numeric($term) ? 'term_id' : 'slug',
+                    'terms'    => is_numeric($term) ? (int) $term : $term,
                 ]];
             }
             $q = new WP_Query($args);
@@ -189,17 +219,17 @@ add_shortcode('widgets_artigos', function ($atts = []) {
             $term = $a['cat'];
             if ($term !== '') {
                 $q = new WP_Query([
-                        'post_type'      => 'artigo',
-                        'post_status'    => 'publish',
-                        'posts_per_page' => $limit,
-                        'tax_query'      => [[
-                                'taxonomy' => 'category',
-                                'field'    => is_numeric($term) ? 'term_id' : 'slug',
-                                'terms'    => is_numeric($term) ? (int) $term : sanitize_title($term),
-                        ]],
-                        'orderby'        => 'date',
-                        'order'          => 'DESC',
-                        'no_found_rows'  => true,
+                    'post_type'      => 'artigo',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => $limit,
+                    'tax_query'      => [[
+                        'taxonomy' => 'category',
+                        'field'    => is_numeric($term) ? 'term_id' : 'slug',
+                        'terms'    => is_numeric($term) ? (int) $term : sanitize_title($term),
+                    ]],
+                    'orderby'        => 'date',
+                    'order'          => 'DESC',
+                    'no_found_rows'  => true,
                 ]);
                 while ($q->have_posts()) { $q->the_post(); $ids[] = get_the_ID(); }
                 wp_reset_postdata();
@@ -210,32 +240,55 @@ add_shortcode('widgets_artigos', function ($atts = []) {
             $term = $a['tag'];
             if ($term !== '') {
                 $q = new WP_Query([
-                        'post_type'      => 'artigo',
-                        'post_status'    => 'publish',
-                        'posts_per_page' => $limit,
-                        'tax_query'      => [[
-                                'taxonomy' => 'post_tag',
-                                'field'    => is_numeric($term) ? 'term_id' : 'slug',
-                                'terms'    => is_numeric($term) ? (int) $term : sanitize_title($term),
-                        ]],
-                        'orderby'        => 'date',
-                        'order'          => 'DESC',
-                        'no_found_rows'  => true,
+                    'post_type'      => 'artigo',
+                    'post_status'    => 'publish',
+                    'posts_per_page' => $limit,
+                    'tax_query'      => [[
+                        'taxonomy' => 'post_tag',
+                        'field'    => is_numeric($term) ? 'term_id' : 'slug',
+                        'terms'    => is_numeric($term) ? (int) $term : sanitize_title($term),
+                    ]],
+                    'orderby'        => 'date',
+                    'order'          => 'DESC',
+                    'no_found_rows'  => true,
                 ]);
                 while ($q->have_posts()) { $q->the_post(); $ids[] = get_the_ID(); }
                 wp_reset_postdata();
             }
             break;
 
+        case 'collection': // NOVO
+            if (taxonomy_exists('colecao')) {
+                $term = $a['col'];
+                if ($term !== '') {
+                    $q = new WP_Query([
+                        'post_type'      => 'artigo',
+                        'post_status'    => 'publish',
+                        'posts_per_page' => $limit,
+                        'tax_query'      => [[
+                            'taxonomy' => 'colecao',
+                            'field'    => is_numeric($term) ? 'term_id' : 'slug',
+                            'terms'    => is_numeric($term) ? (int) $term : sanitize_title($term),
+                        ]],
+                        'orderby'        => 'date',
+                        'order'          => 'DESC',
+                        'no_found_rows'  => true,
+                    ]);
+                    while ($q->have_posts()) { $q->the_post(); $ids[] = get_the_ID(); }
+                    wp_reset_postdata();
+                }
+            }
+            break;
+
         case 'recent':
         default:
             $q = new WP_Query([
-                    'post_type'      => 'artigo',
-                    'post_status'    => 'publish',
-                    'posts_per_page' => $limit,
-                    'orderby'        => 'date',
-                    'order'          => 'DESC',
-                    'no_found_rows'  => true,
+                'post_type'      => 'artigo',
+                'post_status'    => 'publish',
+                'posts_per_page' => $limit,
+                'orderby'        => 'date',
+                'order'          => 'DESC',
+                'no_found_rows'  => true,
             ]);
             while ($q->have_posts()) { $q->the_post(); $ids[] = get_the_ID(); }
             wp_reset_postdata();
@@ -251,7 +304,6 @@ add_shortcode('widgets_artigos', function ($atts = []) {
     ob_start();
     ?>
     <style>
-        /* (mantive seu CSS do carrossel / cards) */
         .wa-title{display:flex;align-items:center;gap:8px;margin:0 0 12px}
         .wa-title i{font-size:22px;color:#9E2B19}
         .wa-carousel{position:relative}
@@ -296,6 +348,7 @@ add_shortcode('widgets_artigos', function ($atts = []) {
                 $rtitle = get_the_title($rid);
                 $thumb  = get_the_post_thumbnail_url($rid, 'medium_large') ?: get_the_post_thumbnail_url($rid, 'medium') ?: '';
                 $cats   = wp_get_post_terms($rid, 'category', ['fields' => 'names']);
+                $cols   = taxonomy_exists('colecao') ? wp_get_post_terms($rid, 'colecao', ['fields' => 'names']) : [];
                 $has_img = has_post_thumbnail($rid);
                 $has_vid = !empty(get_post_meta($rid, 'youtube_link'));
                 $has_pdf = !empty(get_post_meta($rid, 'pdf'));
@@ -319,7 +372,16 @@ add_shortcode('widgets_artigos', function ($atts = []) {
                             <h6 class="wa-title-card" title="<?= esc_html($rtitle) ?>">
                                 <a href="<?= esc_url($link) ?>" style="color:inherit;text-decoration:none"><?= esc_html($rtitle) ?></a>
                             </h6>
-                            <div class="wa-meta"><?= !empty($cats) ? esc_html($cats[0]) : '' ?></div>
+                            <div class="wa-meta">
+                                <?php
+                                // mostra categoria OU coleção (se houver), priorizando coleção quando existir
+                                if (!empty($cols)) {
+                                    echo esc_html($cols[0]);
+                                } else {
+                                    echo !empty($cats) ? esc_html($cats[0]) : '';
+                                }
+                                ?>
+                            </div>
                         </div>
                     </article>
                 </div>

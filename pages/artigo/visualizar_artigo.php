@@ -300,7 +300,7 @@ add_shortcode('visualizar_artigo', function ($atts = []) {
                         <fieldset class="mp-fieldset">
                             <legend>Ações rápidas</legend>
                             <div class="mp-actions" style="margin-bottom:10px;">
-                                <?php $url_editar = site_url('/editar-artigo/?post_id=' . $post_id); ?>
+                                <?php $url_editar = site_url('/minha-conta/?aba=editar&edit=1&post_id=' . $post_id); ?>
                                 <a href="<?= esc_url($url_editar); ?>" class="mp-btn">
                                     <i class="fa-regular fa-pen-to-square"></i> Editar artigo
                                 </a>
@@ -430,36 +430,29 @@ add_shortcode('visualizar_artigo', function ($atts = []) {
             <a class="share-btn whatsapp" target="_blank" rel="noopener"
                href="https://api.whatsapp.com/send?text=<?= $share_txt ?>%20<?= $share_url ?>" aria-label="WhatsApp">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.9 11.9 0 0 0 12.05 0C5.5 0 .2 5.3.2 11.84c0 2.09.55 4.11 1.6 5.9L0 24l6.42-1.67a11.8 11.8 0 0 0 5.62 1.43h.01c6.55 0 11.85-5.3 11.85-11.84a11.79 11.79 0 0 0-3.38-8.44Zm-8.47 18.7h-.01a9.86 9.86 0 0 1-5.02-1.38l-.36-.21-3.81 1 1.02-3.71-.24-.38a9.86 9.86 0 0 1-1.53-5.28C2.1 6.41 6.62 1.9 12.05 1.9c2.62 0 5.08 1.02 6.93 2.88a9.86 9.86 0 0 1 2.9 6.95c0 5.43-4.52 9.95-9.93 9.95Zm5.7-7.44c-.31-.16-1.83-.9-2.11-1-.28-.1-.48-.16-.69.16-.2.31-.79 1-.97 1.2-.18.2-.36.23-.67.08-.31-.16-1.32-.49-2.51-1.56-.93-.83-1.56-1.86-1.74-2.17-.18-.31-.02-.48.14-.63.14-.14.31-.36.46-.54.15-.18.2-.31.31-.52.1-.2.05-.38-.03-.54-.08-.16-.69-1.66-.95-2.28-.25-.6-.5-.52-.69-.53h-.59c-.2 0-.52.08-.79.38-.28.31-1.04 1.02-1.04 2.49 0 1.46 1.07 2.88 1.22 3.08.16.2 2.11 3.23 5.1 4.53.71.31 1.26.49 1.7.63.71.23 1.35.2 1.86.12.57-.08 1.83-.75 2.09-1.48.26-.73.26-1.35.18-1.48-.08-.13-.28-.2-.59-.36Z"/></svg>
-                <span>WhatsApp</span>
             </a>
             <a class="share-btn telegram" target="_blank" rel="noopener"
                href="https://t.me/share/url?url=<?= $share_url ?>&text=<?= $share_txt ?>" aria-label="Telegram">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.372 0 0 5.373 0 12c0 6.627 5.372 12 12 12s12-5.373 12-12c0-6.627-5.372-12-12-12zm5.197 7.44l-2.145 10.13c-.161.723-.585.9-1.184.56l-3.274-2.413-1.58 1.523c-.175.175-.322.322-.661.322l.236-3.34 6.074-5.487c.265-.236-.058-.367-.41-.132l-7.507 4.733-3.236-1.012c-.704-.22-.723-.704.147-1.04l12.65-4.88c.585-.21 1.096.14.905 1.04z"/></svg>
-                <span>Telegram</span>
             </a>
             <a class="share-btn facebook" target="_blank" rel="noopener"
                href="https://www.facebook.com/sharer/sharer.php?u=<?= $share_url ?>" aria-label="Facebook">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.675 0H1.325C.593 0 0 .593 0 1.326v21.348C0 23.406.593 24 1.325 24H12.82v-9.294H9.692V11.09h3.128V8.41c0-3.1 1.893-4.788 4.66-4.788 1.325 0 2.463.099 2.795.143v3.24h-1.918c-1.504 0-1.795.715-1.795 1.763v2.32h3.587l-.467 3.615h-3.12V24h6.116C23.406 24 24 23.406 24 22.674V1.326C24 .593 23.406 0 22.675 0z"/></svg>
-                <span>Facebook</span>
             </a>
             <a class="share-btn twitter" target="_blank" rel="noopener"
                href="https://twitter.com/intent/tweet?text=<?= $share_txt ?>&url=<?= $share_url ?>" aria-label="X">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2H21.5l-7.54 8.6L23.5 22h-7.02l-5.49-6.74L4.7 22H1.5l8.06-9.2L1 2h7.18l5.01 6.12L18.24 2Zm-1.23 18h1.94L7.06 4H5.02l12 16Z"/></svg>
-                <span>X</span>
             </a>
             <a class="share-btn linkedin" target="_blank" rel="noopener"
                href="https://www.linkedin.com/sharing/share-offsite/?url=<?= $share_url ?>" aria-label="LinkedIn">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M4.98 3.5C4.98 5 3.9 6 2.5 6S0 5 0 3.5C0 2 1.1 1 2.49 1h.02C3.9 1 4.98 2 4.98 3.5zM0 8h5v16H0V8zm7.5 0h4.8v2.2h.1c.7-1.3 2.3-2.7 4.7-2.7 5 0 5.9 3.3 5.9 7.6V24h-5v-7.6c0-1.8 0-4.1-2.5-4.1-2.5 0-2.9 2-2.9 4v7.7h-5V8z"/></svg>
-                <span>LinkedIn</span>
             </a>
             <a class="share-btn email"
                href="mailto:?subject=<?= $share_txt ?>&body=<?= $share_txt ?>%0A%0A<?= $share_url ?>" aria-label="E-mail">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2zm0 4-8 5-8-5V6l8 5 8-5v2z"/></svg>
-                <span>E-mail</span>
             </a>
             <button type="button" class="share-btn copy" onclick="copiarLink('<?= esc_js($permalink) ?>')" aria-label="Copiar link">
                 <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z"/></svg>
-                <span>Copiar</span>
             </button>
         </div>
 
