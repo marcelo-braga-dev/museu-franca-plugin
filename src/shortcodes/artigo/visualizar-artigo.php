@@ -1,0 +1,566 @@
+<?php
+if (!defined('ABSPATH')) exit;
+
+add_shortcode('visualizar_artigo', function ($atts = []) {
+    $a = shortcode_atts(['id' => 'auto'], $atts, 'visualizar_artigo');
+
+    $post_id = 0;
+    if (is_numeric($a['id'])) {
+        $post_id = (int)$a['id'];
+    } elseif (in_array(strtolower($a['id']), ['auto', 'current', 'this', ''], true)) {
+        $post_id = get_queried_object_id();
+    } elseif (isset($_GET['id']) && is_numeric($_GET['id'])) {
+        $post_id = (int)$_GET['id'];
+    }
+
+    if (!$post_id) return 'Artigo não encontrado.';
+    $post = get_post($post_id);
+    if (!$post || $post->post_type !== 'artigo') return 'Artigo inválido.';
+
+    // View tracking is handled atomically in hooks.php — do not increment here.
+
+    $is_admin_or_editor = current_user_can('manage_options') || current_user_can('edit_others_posts');
+    $can_edit_this      = current_user_can('edit_post', $post_id);
+    $can_delete_this    = current_user_can('delete_post', $post_id);
+    $can_publish        = current_user_can('manage_options') || current_user_can('publish_posts') || current_user_can('publish_artigos');
+
+    $notice = '';
+    if ($is_admin_or_editor && $_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['mp_admin_action'], $_POST['mp_admin_nonce'])) {
+        $action = sanitize_text_field(wp_unslash($_POST['mp_admin_action']));
+        if (!wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mp_admin_nonce'])), 'mp_admin_' . $action . '_' . $post_id)) {
+            $notice = 'Ação não autorizada (nonce inválido).';
+        } else {
+            switch ($action) {
+                case 'toggle_feature':
+                    $is_featured = get_post_meta($post_id, MP_META_FEATURED, true) === '1';
+                    if ($is_featured) {
+                        delete_post_meta($post_id, MP_META_FEATURED);
+                        $notice = 'Removido de Destaques.';
+                    } else {
+                        update_post_meta($post_id, MP_META_FEATURED, '1');
+                        $notice = 'Marcado como Destaque.';
+                    }
+                    break;
+                case 'toggle_sticky':
+                    if (is_sticky($post_id)) { unstick_post($post_id); $notice = 'Desfixado do topo.'; }
+                    else { stick_post($post_id); $notice = 'Fixado no topo.'; }
+                    break;
+                case 'update_colecoes':
+                    $termos = isset($_POST['colecao_ids']) ? array_map('intval', (array)$_POST['colecao_ids']) : [];
+                    wp_set_post_terms($post_id, $termos, 'colecao', false);
+                    $notice = 'Coleções atualizadas.';
+                    break;
+                case 'update_categoria':
+                    $cat = isset($_POST['categoria_id']) ? (int)$_POST['categoria_id'] : 0;
+                    if ($cat > 0) { wp_set_post_terms($post_id, [$cat], 'category', false); $notice = 'Categoria atualizada.'; }
+                    else { $notice = 'Selecione uma categoria válida.'; }
+                    break;
+                case 'reset_views':
+                    delete_post_meta($post_id, MP_META_VIEWS);
+                    $notice = 'Contador de views zerado.';
+                    break;
+                case 'trash_post':
+                    if ($can_delete_this) { wp_trash_post($post_id); wp_safe_redirect(get_permalink($post_id)); exit; }
+                    else { $notice = 'Sem permissão para enviar à lixeira.'; }
+                    break;
+                case 'delete_post':
+                    if ($can_delete_this) { wp_delete_post($post_id, true); wp_safe_redirect(home_url('/minha-conta/?aba=artigos')); exit; }
+                    else { $notice = 'Sem permissão para excluir permanentemente.'; }
+                    break;
+                case 'set_status':
+                    $status  = isset($_POST['new_status']) ? sanitize_key($_POST['new_status']) : '';
+                    if (in_array($status, ['pending', 'publish'], true) && $can_edit_this) {
+                        $ok = wp_update_post(['ID' => $post_id, 'post_status' => $status], true);
+                        if (!is_wp_error($ok)) { $notice = 'Status atualizado para: ' . esc_html($status) . '.'; $post = get_post($post_id); }
+                        else { $notice = 'Falha ao atualizar status.'; }
+                    } else { $notice = 'Status inválido ou sem permissão.'; }
+                    break;
+            }
+        }
+    }
+
+    // Publicar handler
+    if (
+        $_SERVER['REQUEST_METHOD'] === 'POST' &&
+        isset($_POST['mp_publicar'], $_POST['mp_pub_nonce'], $_POST['post_id']) &&
+        intval($_POST['post_id']) === $post_id &&
+        wp_verify_nonce(sanitize_text_field(wp_unslash($_POST['mp_pub_nonce'])), 'mp_publicar_' . $post_id)
+    ) {
+        if ($can_publish && get_post_status($post_id) === 'pending') {
+            wp_update_post(['ID' => $post_id, 'post_status' => 'publish']);
+            wp_safe_redirect(site_url('/minha-conta/?aba=revisao'));
+            exit;
+        }
+    }
+
+    $categorias       = wp_get_post_terms($post_id, 'category', ['fields' => 'names']);
+    $tags             = wp_get_post_terms($post_id, 'post_tag', ['fields' => 'names']);
+    $autor_nome       = get_the_author_meta('display_name', $post->post_author);
+    $data_publicacao  = get_the_date('d \d\e F \d\e Y', $post_id);
+    $permalink        = get_permalink($post_id);
+    $titulo           = get_the_title($post_id);
+    $share_url        = rawurlencode($permalink);
+    $share_txt        = rawurlencode($titulo);
+
+    $audios_ids = array_values(array_filter((array)get_post_meta($post_id, MP_META_AUDIO)));
+    $tem_audios = !empty($audios_ids);
+
+    $is_featured         = get_post_meta($post_id, MP_META_FEATURED, true) === '1';
+    $is_sticky_post      = is_sticky($post_id);
+    $views               = (int)get_post_meta($post_id, MP_META_VIEWS, true);
+    $colecao_terms_all   = get_terms(['taxonomy' => 'colecao', 'hide_empty' => false]);
+    $colecao_current_ids = wp_get_post_terms($post_id, 'colecao', ['fields' => 'ids']);
+    $categoria_atual_ids = wp_get_post_terms($post_id, 'category', ['fields' => 'ids']);
+    $categoria_atual     = !empty($categoria_atual_ids) ? (int)$categoria_atual_ids[0] : 0;
+
+    ob_start();
+    ?>
+    <style>
+        .artigo-visualizar{color:#000;padding:40px 20px;margin:0 auto;font-family:sans-serif}
+        .artigo-visualizar h2{text-align:center;font-size:28px;margin-bottom:10px}
+        .autor-meta{display:flex;gap:6px;justify-content:center;align-items:center;font-size:14px;color:#666;margin-bottom:10px}
+        .status-badge{display:inline-block;padding:4px 10px;border-radius:999px;font-size:12px;font-weight:700}
+        .status-pending{background:#FEF3C7;color:#92400E;border:1px solid #FCD34D}
+        .status-publish{background:#DCFCE7;color:#166534;border:1px solid #86EFAC}
+        .mp-toggle-wrap{max-width:1100px;display:flex;justify-content:flex-start;margin-bottom:25px}
+        .mp-toggle-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:orange;font-weight:800;font-size:13px;cursor:pointer;color:#0f172a}
+        .mp-toggle-btn[aria-pressed="true"]{background:#0f172a;color:#fff;border-color:#0f172a}
+        .mp-panel{max-width:1100px;margin:8px auto 22px;background:#fff;border:1px solid #e5e7eb;border-radius:10px;display:none}
+        .mp-panel.is-open{display:block}
+        .mp-panel header{padding:12px 14px;border-bottom:1px solid #e5e7eb;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+        .mp-chip{display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border:1px solid #e5e7eb;border-radius:999px;background:#fafafa;font-size:12px;font-weight:700}
+        .mp-panel .mp-body{padding:14px;display:grid;gap:14px}
+        .mp-fieldset{border:1px solid #e5e7eb;border-radius:8px;padding:12px}
+        .mp-fieldset legend{padding:0 6px;font-weight:800;font-size:13px;color:#0f172a}
+        .mp-row{display:grid;gap:10px}
+        .mp-actions{display:flex;flex-wrap:wrap;gap:8px}
+        .mp-form input[type="text"],.mp-form select,.mp-form textarea{width:100%;padding:8px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;background:#fff}
+        .mp-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 12px;border:1px solid #e5e7eb;border-radius:8px;background:#fff;font-weight:600;font-size:13px;cursor:pointer;text-decoration:none;color:#0f172a}
+        .mp-btn--primary{background:#0f172a;color:#fff;border-color:#0f172a}
+        .mp-btn--submit{background:rgb(56,208,5);color:#fff;}
+        .mp-btn--danger{background:#9E2B19;color:#fff;border-color:#9E2B19}
+        .mp-note-ok{background:#DCFCE7;border:1px solid #22C55E;color:#14532D;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:700}
+        .mp-note-err{background:#FEE2E2;border:1px solid #EF4444;color:#7F1D1D;padding:8px 10px;border-radius:8px;font-size:13px;font-weight:700}
+        @media(min-width:900px){.mp-grid-2{display:grid;grid-template-columns:1fr 1fr;gap:14px}.mp-grid-4{display:grid;grid-template-columns:1fr 1fr;gap:14px}}
+        .colecoes-wrap{display:flex;flex-wrap:wrap;gap:10px}
+        .colecoes-wrap input[type="checkbox"]{display:none}
+        .colecoes-wrap label{display:inline-flex;align-items:center;padding:8px 14px;border:1px solid #e5e7eb;border-radius:999px;background:#f9fafb;cursor:pointer;font-weight:800;font-size:13px;color:#0f172a;transition:all .15s}
+        .colecoes-wrap input[type="checkbox"]:checked + label{background:#9E2B19;color:#fff;border-color:#9E2B19;box-shadow:0 4px 14px rgba(158,43,25,.25)}
+        .share-bar{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin:0 auto 24px;max-width:900px}
+        .share-btn{--bg:#111;--fg:#fff;display:inline-flex;align-items:center;gap:8px;padding:6px 10px;border-radius:999px;text-decoration:none;font-weight:700;font-size:12px;border:1px solid rgba(0,0,0,.08);background:var(--bg);color:var(--fg);transition:transform .08s,filter .2s,box-shadow .2s;box-shadow:0 6px 16px rgba(0,0,0,.08)}
+        .share-btn:hover{transform:translateY(-1px);filter:brightness(1.02)}
+        .share-btn svg{width:14px;height:14px;display:block}
+        .share-btn.whatsapp{--bg:#25D366}.share-btn.telegram{--bg:#229ED9}.share-btn.facebook{--bg:#1877F2}.share-btn.twitter{--bg:#000}.share-btn.linkedin{--bg:#0A66C2}.share-btn.email{--bg:#6B7280}.share-btn.copy{--bg:#0f172a}
+        @media(max-width:560px){.share-btn{padding:9px 12px;font-size:13px}.share-btn span{display:none}}
+        .artigo-resumo{background:#fafafa;border:1px solid #eee;padding:20px;border-radius:6px;margin-bottom:30px}
+        .artigo-conteudo{line-height:1.7;margin-bottom:30px}
+        .section-title{display:flex;align-items:center;gap:8px;margin:25px 0 15px;padding-top:20px;padding-bottom:6px;border-top:1px solid #e5e5e5}
+        .section-title i{font-size:28px;color:#9E2B19}
+        .section-title h5{margin:0;font-size:20px;font-weight:600}
+        .galeria-imagens{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:25px;margin-top:10px}
+        .g-item{border-radius:14px;overflow:hidden;background:#f5f7fa;border:1px solid #e8e8e8}
+        .g-media{aspect-ratio:4/3;width:100%;object-fit:cover;display:block}
+        .g-caption{padding:8px 10px;font-size:13px;font-weight:500;line-height:1.4;color:#374151;background:#fff;border-top:1px solid #e5e7eb}
+        .g-actions{display:flex;gap:8px;padding:8px 10px;background:#f9fafb;border-top:1px solid #e5e7eb}
+        .g-btn{all:unset;display:inline-flex;align-items:center;gap:6px;padding:6px 10px;border-radius:999px;background:#fff;color:#0f172a;font-weight:600;font-size:12px;border:1px solid #e5e7eb;cursor:pointer}
+        .videos-view-wrap{max-width:1100px;margin:0 auto 24px;padding:0 12px}
+        .videos-view-grid{display:grid;grid-template-columns:1fr;gap:22px}
+        .video-card{border:1px solid #e5e7eb;border-radius:12px;padding:12px;background:#fff}
+        .video-frame{width:100%;aspect-ratio:16/9;background:#000;border-radius:10px;overflow:hidden}
+        .video-frame iframe{width:100%;height:100%;border:0;display:block}
+        .video-desc{font-size:15px;line-height:1.55;color:#374151;background:#f8fafc;border:1px solid #eef2f7;padding:10px 12px;border-radius:10px;text-align:center}
+        .audio-list,.pdf-list{display:grid;grid-template-columns:1fr;gap:12px;margin:10px 0 18px}
+        .audio-item,.pdf-item{display:grid;grid-template-columns:auto 1fr auto;gap:12px;align-items:center;padding:12px;border:1px solid #e6e8eb;border-radius:12px;background:#fff}
+        .audio-icon{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#eff6ff;border:1px solid #bfdbfe;color:#1d4ed8}
+        .audio-title,.pdf-title{font-weight:600;color:#0f172a;line-height:1.2;margin:0}
+        .audio-meta,.pdf-meta{font-size:12px;color:#64748b;margin:0}
+        .audio-desc,.pdf-desc{font-size:13px;color:#475569;margin:2px 0 0}
+        .audio-btn,.pdf-btn{display:inline-flex;align-items:center;gap:8px;padding:8px 10px;border-radius:10px;text-decoration:none;font-weight:800;font-size:13px;border:1px solid #e6e8eb;background:#fff;color:#111827}
+        .pdf-icon{width:40px;height:40px;display:inline-flex;align-items:center;justify-content:center;border-radius:10px;background:#fff1f1;border:1px solid #fecaca;color:#d32f2f}
+        .artigo-capa{max-width:1100px;margin:0 auto 20px;display:flex;justify-content:center}
+        .artigo-capa img{display:block;max-width:100%;max-height:350px;height:auto;border-radius:6px;margin:0 auto}
+        #lightbox-overlay{display:none;position:fixed;inset:0;z-index:9999;background:rgba(10,12,16,.88);backdrop-filter:saturate(1.3) blur(2px);align-items:center;justify-content:center;flex-direction:column}
+        .lb-stage{position:relative;width:min(96vw,1200px);height:min(86vh,820px);display:flex;align-items:center;justify-content:center}
+        #lb-img{max-width:100%;max-height:100%;border-radius:12px;user-select:none;pointer-events:none;box-shadow:0 12px 40px rgba(0,0,0,.35)}
+        .lb-topbar{position:absolute;top:14px;left:50%;transform:translateX(-50%);display:flex;gap:8px;background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.18);padding:6px 10px;border-radius:999px;color:#f8fafc;font-size:12px;font-weight:700;z-index:3}
+        .lb-nav{position:absolute;inset:0;display:flex;align-items:center;justify-content:space-between;z-index:3}
+        .lb-arrow{all:unset;cursor:pointer;width:50px;height:50px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:28px;background:#9E2B19;color:#fff;border:none}
+        .lb-controls{position:absolute;right:14px;top:14px;display:flex;gap:8px;z-index:4}
+        .lb-close{all:unset;cursor:pointer;width:40px;height:40px;border-radius:999px;display:grid;place-items:center;background:#fff;color:#0f172a;border:1px solid #e5e7eb}
+        .lb-btm{display:flex;align-items:center;justify-content:space-between;width:min(96vw,1200px);margin-top:14px;color:#e5e7eb;gap:10px;z-index:2}
+        .lb-btn{all:unset;cursor:pointer;display:inline-flex;align-items:center;gap:6px;padding:8px 12px;border-radius:999px;background:#ffffff;color:#0f172a;font-weight:800;font-size:13px;border:1px solid #e5e7eb}
+        .artigos-semelhantes{margin:40px 0;padding-top:40px;border-top:1px solid #e5e7eb}
+    </style>
+
+    <div class="artigo-visualizar">
+
+        <?php if ($post->post_status === 'pending'): ?>
+            <div style="text-align:center;margin-bottom:10px;">
+                <span class="status-badge status-pending">Pendente de revisão</span>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($post->post_status === 'pending' && $can_publish): ?>
+            <div style="display:flex;justify-content:center;margin:10px 0 24px;">
+                <form method="post">
+                    <?php wp_nonce_field('mp_publicar_' . $post_id, 'mp_pub_nonce'); ?>
+                    <input type="hidden" name="post_id" value="<?php echo esc_attr($post_id); ?>">
+                    <button type="submit" name="mp_publicar" class="mp-btn mp-btn--primary">Publicar agora</button>
+                </form>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($is_admin_or_editor): ?>
+            <div class="mp-toggle-wrap">
+                <button id="mp-toggle-btn" class="mp-toggle-btn" type="button" aria-pressed="false" aria-controls="mp-panel-wrap">
+                    <i id="mp-toggle-ico" class="fa-solid fa-chevron-down" aria-hidden="true"></i>
+                    <span id="mp-toggle-text">Abrir painel</span>
+                </button>
+            </div>
+
+            <div id="mp-panel-wrap" class="mp-panel" role="region" aria-label="Painel de Gestão">
+                <header>
+                    <span class="mp-chip">Autor: <?php echo esc_html($autor_nome); ?></span>
+                    <span class="mp-chip">Status: <?php echo esc_html($post->post_status); ?></span>
+                    <span class="mp-chip">Visualizações: <?php echo number_format_i18n((int)$views); ?></span>
+                    <?php if ($is_sticky_post): ?><span class="mp-chip">Fixado</span><?php endif; ?>
+                    <?php if ($is_featured): ?><span class="mp-chip">Destaque</span><?php endif; ?>
+                </header>
+
+                <div class="mp-body mp-form">
+                    <?php if (!empty($notice)): ?>
+                        <div class="mp-note-ok"><?php echo esc_html($notice); ?></div>
+                    <?php endif; ?>
+
+                    <div class="mp-grid-4">
+                        <fieldset class="mp-fieldset">
+                            <legend>Ações rápidas</legend>
+                            <div class="mp-actions" style="margin-bottom:10px;">
+                                <?php $url_editar = site_url('/minha-conta/?aba=editar&edit=1&post_id=' . $post_id); ?>
+                                <a href="<?php echo esc_url($url_editar); ?>" class="mp-btn">
+                                    <i class="fa-regular fa-pen-to-square"></i> Editar artigo
+                                </a>
+                                <form method="post" style="display:inline;">
+                                    <input type="hidden" name="mp_admin_action" value="toggle_feature">
+                                    <?php wp_nonce_field('mp_admin_toggle_feature_' . $post_id, 'mp_admin_nonce'); ?>
+                                    <button class="mp-btn"><i class="fa-regular fa-star"></i> <?php echo $is_featured ? 'Remover Destaque' : 'Tornar Destaque'; ?></button>
+                                </form>
+                                <form method="post" onsubmit="return confirm('Enviar para a lixeira?');" style="display:inline;">
+                                    <input type="hidden" name="mp_admin_action" value="trash_post">
+                                    <?php wp_nonce_field('mp_admin_trash_post_' . $post_id, 'mp_admin_nonce'); ?>
+                                    <button class="mp-btn"><i class="fa-regular fa-trash-can"></i> Lixeira</button>
+                                </form>
+                                <form method="post" onsubmit="return confirm('Excluir PERMANENTEMENTE? Esta ação não pode ser desfeita.');" style="display:inline;">
+                                    <input type="hidden" name="mp_admin_action" value="delete_post">
+                                    <?php wp_nonce_field('mp_admin_delete_post_' . $post_id, 'mp_admin_nonce'); ?>
+                                    <button class="mp-btn mp-btn--danger"><i class="fa-solid fa-trash"></i> Excluir permanente</button>
+                                </form>
+                            </div>
+                        </fieldset>
+
+                        <fieldset class="mp-fieldset">
+                            <legend>Status do artigo</legend>
+                            <form method="post" class="mp-row">
+                                <input type="hidden" name="mp_admin_action" value="set_status">
+                                <?php wp_nonce_field('mp_admin_set_status_' . $post_id, 'mp_admin_nonce'); ?>
+                                <label for="new_status"><strong>Novo status</strong></label>
+                                <select name="new_status" id="new_status">
+                                    <option value="publish" <?php echo $post->post_status === 'publish' ? 'selected' : ''; ?>>Publicado</option>
+                                    <option value="pending" <?php echo $post->post_status === 'pending' ? 'selected' : ''; ?>>Revisão Pendente</option>
+                                </select>
+                                <div class="mp-actions">
+                                    <button class="mp-btn mp-btn--submit"><i class="fa-regular fa-floppy-disk"></i> Atualizar status</button>
+                                </div>
+                            </form>
+                        </fieldset>
+                    </div>
+
+                    <div class="mp-grid-2">
+                        <fieldset class="mp-fieldset">
+                            <legend>Coleções</legend>
+                            <form method="post" class="mp-row">
+                                <input type="hidden" name="mp_admin_action" value="update_colecoes">
+                                <?php wp_nonce_field('mp_admin_update_colecoes_' . $post_id, 'mp_admin_nonce'); ?>
+                                <div class="colecoes-wrap" role="group" aria-label="Selecionar coleções">
+                                    <?php foreach ($colecao_terms_all as $t):
+                                        $tid = (int)$t->term_id;
+                                        $checked = in_array($tid, $colecao_current_ids, true) ? 'checked' : '';
+                                        $id_attr = 'colecao_' . $tid;
+                                        ?>
+                                        <input id="<?php echo esc_attr($id_attr); ?>" type="checkbox" name="colecao_ids[]" value="<?php echo $tid; ?>" <?php echo $checked; ?>>
+                                        <label for="<?php echo esc_attr($id_attr); ?>"><?php echo esc_html($t->name); ?></label>
+                                    <?php endforeach; ?>
+                                </div>
+                                <div class="mp-actions" style="margin-top:8px;">
+                                    <button class="mp-btn mp-btn--submit"><i class="fa-regular fa-floppy-disk"></i> Salvar coleções</button>
+                                </div>
+                            </form>
+                        </fieldset>
+
+                        <fieldset class="mp-fieldset">
+                            <legend>Categoria</legend>
+                            <form method="post" class="mp-row">
+                                <input type="hidden" name="mp_admin_action" value="update_categoria">
+                                <?php wp_nonce_field('mp_admin_update_categoria_' . $post_id, 'mp_admin_nonce'); ?>
+                                <label for="categoria_id"><strong>Categoria principal</strong></label>
+                                <select name="categoria_id" id="categoria_id">
+                                    <option value="0">— Selecione —</option>
+                                    <?php
+                                    $top_cats = get_terms(['taxonomy' => 'category', 'hide_empty' => false, 'parent' => 0]);
+                                    if (!empty($top_cats) && !is_wp_error($top_cats)) {
+                                        mp_exibir_categorias($top_cats, 0, '', $categoria_atual);
+                                    }
+                                    ?>
+                                </select>
+                                <div class="mp-actions">
+                                    <button class="mp-btn mp-btn--submit"><i class="fa-regular fa-floppy-disk"></i> Salvar categoria</button>
+                                </div>
+                            </form>
+                        </fieldset>
+                    </div>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <h2><?php echo esc_html($post->post_title); ?></h2>
+
+        <div class="autor-meta">
+            Por: <?php echo esc_html($autor_nome); ?>, <?php echo esc_html($data_publicacao); ?>
+            <?php echo function_exists('mp_favorito_botao') ? mp_favorito_botao($post_id) : ''; ?>
+        </div>
+
+        <div class="share-bar" role="group" aria-label="Compartilhar este artigo">
+            <a class="share-btn whatsapp" target="_blank" rel="noopener"
+               href="https://api.whatsapp.com/send?text=<?php echo $share_txt; ?>%20<?php echo $share_url; ?>" aria-label="WhatsApp">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M20.52 3.48A11.9 11.9 0 0 0 12.05 0C5.5 0 .2 5.3.2 11.84c0 2.09.55 4.11 1.6 5.9L0 24l6.42-1.67a11.8 11.8 0 0 0 5.62 1.43h.01c6.55 0 11.85-5.3 11.85-11.84a11.79 11.79 0 0 0-3.38-8.44Z"/></svg>
+            </a>
+            <a class="share-btn telegram" target="_blank" rel="noopener"
+               href="https://t.me/share/url?url=<?php echo $share_url; ?>&text=<?php echo $share_txt; ?>" aria-label="Telegram">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 0C5.372 0 0 5.373 0 12c0 6.627 5.372 12 12 12s12-5.373 12-12c0-6.627-5.372-12-12-12zm5.197 7.44l-2.145 10.13c-.161.723-.585.9-1.184.56l-3.274-2.413-1.58 1.523c-.175.175-.322.322-.661.322l.236-3.34 6.074-5.487c.265-.236-.058-.367-.41-.132l-7.507 4.733-3.236-1.012c-.704-.22-.723-.704.147-1.04l12.65-4.88c.585-.21 1.096.14.905 1.04z"/></svg>
+            </a>
+            <button type="button" class="share-btn copy" onclick="copiarLink('<?php echo esc_js($permalink); ?>')" aria-label="Copiar link">
+                <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v12h2V3h12V1Zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2Zm0 16H8V7h11v14Z"/></svg>
+            </button>
+        </div>
+
+        <?php
+        $capa_url  = get_the_post_thumbnail_url($post_id, 'large');
+        $capa_full = get_the_post_thumbnail_url($post_id, 'full');
+        if ($capa_url && $capa_full): ?>
+            <div class="artigo-capa">
+                <img src="<?php echo esc_url($capa_url); ?>" alt="Capa"
+                     style="cursor:zoom-in"
+                     onclick="abrirLightbox('<?php echo esc_url($capa_full); ?>')">
+            </div>
+        <?php endif; ?>
+
+        <div class="artigo-resumo">
+            <?php if (!empty($post->post_excerpt)): ?>
+                <div style="margin-bottom:10px;"><strong>Resumo</strong></div>
+            <?php endif; ?>
+            <div><?php echo esc_html($post->post_excerpt); ?></div>
+            <div class="info-inline" style="font-size:11px;">
+                <?php if (!empty($categorias)): ?>
+                    <strong>Categoria:</strong> <?php echo esc_html(implode(', ', $categorias)); ?><br/>
+                <?php endif; ?>
+                <?php if (function_exists('mp_colecao_badges')):
+                    $badges = mp_colecao_badges($post_id);
+                    if ($badges): ?>
+                        <div><strong>Coleção:</strong> <?php echo $badges; ?></div>
+                    <?php endif; endif; ?>
+                <?php if (!empty($tags)):
+                    $tags_formatadas = array_map(function ($t) { return '#' . esc_html($t); }, $tags); ?>
+                    <strong>Palavras-chave:</strong> <?php echo implode(', ', $tags_formatadas); ?>
+                <?php endif; ?>
+            </div>
+        </div>
+
+        <div class="artigo-conteudo"><?php echo apply_filters('the_content', $post->post_content); ?></div>
+
+        <?php
+        $imagens = get_post_meta($post_id, MP_META_IMG);
+        if (!empty($imagens)) {
+            echo '<div class="section-title"><i class="fa-regular fa-images"></i><h5>Galeria de Imagens:</h5></div>';
+            echo '<div class="galeria-imagens" id="galeria" role="list">';
+            foreach ($imagens as $idx => $id) {
+                $thumb = wp_get_attachment_image_url($id, 'large');
+                $full  = wp_get_attachment_image_url($id, 'full');
+                $desc  = get_post_meta($post_id, 'imagem_adicional_descricao_' . $id, true);
+                if ($thumb && $full) {
+                    $safeDesc = esc_attr($desc ?: '');
+                    $altText  = get_post_meta($id, '_wp_attachment_image_alt', true) ?: get_the_title($id);
+                    echo '<figure class="g-item" role="listitem" tabindex="0"
+                                data-full="' . esc_url($full) . '"
+                                data-desc="' . $safeDesc . '"
+                                data-index="' . intval($idx) . '">
+                            <img class="g-media" src="' . esc_url($thumb) . '" alt="' . esc_attr($altText) . '" loading="lazy">';
+                    if ($desc) echo '<figcaption class="g-caption">' . esc_html($desc) . '</figcaption>';
+                    echo '<div class="g-actions">
+                              <button type="button" class="g-btn g-open" aria-label="Ampliar">Ver</button>
+                              <a class="g-btn g-download" href="' . esc_url($full) . '" download aria-label="Baixar imagem">Baixar</a>
+                          </div>
+                        </figure>';
+                }
+            }
+            echo '</div>';
+        }
+
+        $cards = [];
+        $yt_items = (array)get_post_meta($post_id, MP_META_YOUTUBE);
+        foreach ($yt_items as $raw) {
+            $data = is_array($raw) ? $raw : maybe_unserialize($raw);
+            $vid  = isset($data['video_id']) ? sanitize_text_field($data['video_id']) : '';
+            $desc = isset($data['desc']) ? wp_kses_post($data['desc']) : '';
+            if ($vid) $cards[] = ['id' => $vid, 'desc' => $desc, 'embed' => "https://www.youtube.com/embed/$vid"];
+        }
+        if (!empty($cards)): ?>
+            <div class="section-title"><i class="fab fa-youtube" style="color:#ff0000"></i><h5>Vídeos</h5></div>
+            <div class="videos-view-wrap">
+                <div class="videos-view-grid">
+                    <?php foreach ($cards as $i => $v): ?>
+                        <article class="video-card" role="group" aria-label="<?php echo esc_attr('Vídeo ' . ($i + 1)); ?>">
+                            <div class="video-frame">
+                                <iframe src="<?php echo esc_url($v['embed']); ?>" loading="lazy" allowfullscreen title="<?php echo esc_attr('YouTube player ' . ($i + 1)); ?>"></iframe>
+                            </div>
+                            <?php if (!empty($v['desc'])): ?>
+                                <div class="video-desc"><?php echo $v['desc']; ?></div>
+                            <?php endif; ?>
+                        </article>
+                    <?php endforeach; ?>
+                </div>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($tem_audios): ?>
+            <div class="section-title"><i class="fa-solid fa-volume-high"></i><h5>Áudios</h5></div>
+            <div class="audio-list">
+                <?php foreach ($audios_ids as $aid):
+                    $aid  = intval($aid);
+                    $src  = wp_get_attachment_url($aid);
+                    if (!$src) continue;
+                    $mime  = get_post_mime_type($aid) ?: 'audio/mpeg';
+                    $title_a = get_the_title($aid) ?: wp_basename(parse_url($src, PHP_URL_PATH));
+                    $desc  = get_post_meta($post_id, 'audio_descricao_' . $aid, true);
+                    $path  = get_attached_file($aid);
+                    $size  = (is_string($path) && file_exists($path)) ? filesize($path) : 0;
+                    $size_h = $size ? mp_format_bytes($size) : '';
+                    ?>
+                    <div class="audio-item">
+                        <div class="audio-icon" aria-hidden="true"><i class="fa-solid fa-volume-high"></i></div>
+                        <div class="audio-info">
+                            <p class="audio-title"><?php echo esc_html($title_a); ?></p>
+                            <p class="audio-meta"><?php echo $size_h ? esc_html($size_h) . ' · ' : ''; ?><?php echo esc_html($mime); ?></p>
+                            <?php if (!empty($desc)): ?><p class="audio-desc"><?php echo esc_html($desc); ?></p><?php endif; ?>
+                        </div>
+                        <div class="audio-actions">
+                            <a class="audio-btn" href="<?php echo esc_url($src); ?>" download><i class="fa-solid fa-download"></i> Baixar</a>
+                        </div>
+                        <div style="grid-column:1 / -1">
+                            <audio class="mp-audio" preload="none">
+                                <source src="<?php echo esc_url($src); ?>" type="<?php echo esc_attr($mime); ?>">
+                                Seu navegador não suporta áudio HTML5.
+                            </audio>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+
+        <?php
+        $pdfs = array_filter((array)get_post_meta($post_id, MP_META_PDF), function ($v) { return !empty($v); });
+        if (!empty($pdfs)): ?>
+            <div class="section-title"><i class="fa-regular fa-file-pdf"></i><h5>Anexos PDF</h5></div>
+            <div class="pdf-list">
+                <?php foreach ($pdfs as $id):
+                    $id = intval($id);
+                    $url = wp_get_attachment_url($id);
+                    if (!$url) continue;
+                    $title_p = get_the_title($id);
+                    $descricao = get_post_meta($post_id, 'pdf_descricao_' . $id, true);
+                    $path = get_attached_file($id);
+                    $size = (is_string($path) && file_exists($path)) ? mp_format_bytes(filesize($path)) : '';
+                    $basename = $title_p ?: wp_basename(parse_url($url, PHP_URL_PATH));
+                    ?>
+                    <div class="pdf-item">
+                        <div class="pdf-icon" aria-hidden="true"><i class="fa-regular fa-file-pdf"></i></div>
+                        <div class="pdf-info">
+                            <a href="<?php echo esc_url($url); ?>" target="_blank" rel="noopener"><p class="pdf-title"><?php echo esc_html($basename); ?></p></a>
+                            <p class="pdf-meta"><?php echo $size ? esc_html($size) . ' · ' : ''; ?>PDF</p>
+                            <?php if (!empty($descricao)): ?><p class="pdf-desc"><?php echo esc_html($descricao); ?></p><?php endif; ?>
+                        </div>
+                        <div class="pdf-actions">
+                            <a class="pdf-btn" href="<?php echo esc_url($url); ?>" target="_blank" rel="noopener"><i class="fa-regular fa-eye"></i> Ver</a>
+                            <a class="pdf-btn" href="<?php echo esc_url($url); ?>" download><i class="fa-solid fa-download"></i> Baixar</a>
+                        </div>
+                    </div>
+                <?php endforeach; ?>
+            </div>
+        <?php endif; ?>
+    </div>
+
+    <div style="border:1px solid #e1e1e1;padding:15px;border-radius:5px;margin-bottom:20px">
+        <small style="color:#5c5c5d">
+            <b>Aviso de Responsabilidade</b><br/>
+            Os conteúdos disponibilizados neste site são de uso exclusivo para fins informativos e pessoais.
+        </small>
+    </div>
+
+    <div class="artigos-semelhantes">
+        <?php echo do_shortcode('[widgets_artigos mode="related_category" post_id="' . $post_id . '" title="Sugeridos para você!"]'); ?>
+    </div>
+
+    <div id="lightbox-overlay" aria-hidden="true">
+        <div class="lb-stage" id="lb-stage">
+            <div class="lb-topbar" id="lb-counter">1 / 1</div>
+            <div class="lb-controls"><button type="button" class="lb-close" id="lb-close" aria-label="Fechar">&#x2715;</button></div>
+            <img id="lb-img" src="" alt="Imagem ampliada">
+            <div class="lb-nav">
+                <button type="button" class="lb-arrow" id="lb-prev" aria-label="Anterior"><i class="fa-solid fa-arrow-left"></i></button>
+                <button type="button" class="lb-arrow" id="lb-next" aria-label="Próxima"><i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+        </div>
+        <div class="lb-btm">
+            <div id="lb-caption"></div>
+            <div class="lb-actions">
+                <button type="button" class="lb-btn" id="lb-zoom-in" aria-label="Mais zoom"><i class="fa-solid fa-magnifying-glass-plus"></i></button>
+                <button type="button" class="lb-btn" id="lb-zoom-out" aria-label="Menos zoom"><i class="fa-solid fa-magnifying-glass-minus"></i></button>
+                <a class="lb-btn" id="lb-download" href="#" download aria-label="Baixar imagem"><i class="fa-solid fa-download"></i></a>
+            </div>
+        </div>
+    </div>
+
+    <?php if ($tem_audios): ?>
+        <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.css">
+        <script src="https://cdn.jsdelivr.net/npm/plyr@3/dist/plyr.polyfilled.min.js"></script>
+    <?php endif; ?>
+
+    <script>
+    (function(){
+        var btn=document.getElementById('mp-toggle-btn'),text=document.getElementById('mp-toggle-text'),icon=document.getElementById('mp-toggle-ico'),panel=document.getElementById('mp-panel-wrap');
+        if(!btn||!panel)return;
+        var key='mpPanelOpen_<?php echo (int)$post_id; ?>',saved=localStorage.getItem(key),open=saved==='1';
+        function render(){panel.classList.toggle('is-open',open);btn.setAttribute('aria-pressed',open?'true':'false');text.textContent=open?'Fechar painel':'Abrir painel';icon.classList.toggle('fa-chevron-up',open);icon.classList.toggle('fa-chevron-down',!open);}
+        btn.addEventListener('click',function(){open=!open;localStorage.setItem(key,open?'1':'0');render();});render();
+    })();
+    var zoom=1;
+    function abrirLightbox(src){var o=document.getElementById('lightbox-overlay'),i=document.getElementById('lb-img'),c=document.getElementById('lb-counter'),d=document.getElementById('lb-download');i.src=src;i.style.transform='scale(1)';zoom=1;c.textContent='—';d.href=src;o.style.display='flex';o.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';}
+    (function(){var items=[],current=0,z=1,qs=function(s){return document.querySelector(s);};var overlay=qs('#lightbox-overlay'),img=qs('#lb-img'),caption=qs('#lb-caption'),counter=qs('#lb-counter'),btnPrev=qs('#lb-prev'),btnNext=qs('#lb-next'),btnClose=qs('#lb-close'),btnZoomIn=qs('#lb-zoom-in'),btnZoomOut=qs('#lb-zoom-out'),btnDownload=qs('#lb-download'),stage=qs('#lb-stage');
+    function collect(){items=Array.from(document.querySelectorAll('.galeria-imagens .g-item')).map(function(el){return{full:el.getAttribute('data-full'),desc:el.getAttribute('data-desc')||'',el:el};});}
+    function openAt(index){if(!items.length)return;current=(index+items.length)%items.length;var it=items[current];img.src=it.full;img.style.transform='scale(1)';z=1;caption.textContent=it.desc||'';counter.textContent=(current+1)+' / '+items.length;btnDownload.href=it.full;overlay.style.display='flex';overlay.setAttribute('aria-hidden','false');document.body.style.overflow='hidden';}
+    function close(){overlay.style.display='none';overlay.setAttribute('aria-hidden','true');document.body.style.overflow='';}
+    overlay&&overlay.addEventListener('click',function(e){if(e.target===overlay)close();});
+    btnClose&&btnClose.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();close();});
+    btnNext&&btnNext.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openAt(current+1);});
+    btnPrev&&btnPrev.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openAt(current-1);});
+    btnZoomIn&&btnZoomIn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();z=Math.min(4,z+0.2);img.style.transform='scale('+z+')';});
+    btnZoomOut&&btnZoomOut.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();z=Math.max(0.2,z-0.2);img.style.transform='scale('+z+')';});
+    function wireItems(){Array.from(document.querySelectorAll('.galeria-imagens .g-item')).forEach(function(el,i){var openFn=function(){openAt(i);};el.addEventListener('click',openFn);el.addEventListener('keydown',function(e){if(e.key==='Enter'||e.key===' '){e.preventDefault();openFn();}});var openBtn=el.querySelector('.g-open');if(openBtn)openBtn.addEventListener('click',function(e){e.preventDefault();e.stopPropagation();openFn();});el.querySelectorAll('a.g-download[download]').forEach(function(a){a.addEventListener('click',function(e){e.stopPropagation();});});});}
+    function init(){collect();wireItems();document.addEventListener('keydown',function(e){if(overlay.getAttribute('aria-hidden')==='true')return;if(e.key==='Escape')close();if(e.key==='ArrowRight')openAt(current+1);if(e.key==='ArrowLeft')openAt(current-1);});}
+    if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',init);else init();
+    window._mpRefreshGallery=function(){collect();wireItems();};})();
+    function copiarLink(url){if(navigator.clipboard&&window.isSecureContext){navigator.clipboard.writeText(url).then(function(){var n=document.createElement('div');n.textContent='Link copiado!';n.style.cssText='position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#0f172a;color:#fff;padding:10px 14px;border-radius:999px;font-weight:700;z-index:10001';document.body.appendChild(n);setTimeout(function(){n.remove();},1800);});}else{var ta=document.createElement('textarea');ta.value=url;document.body.appendChild(ta);ta.select();try{document.execCommand('copy');}catch(e){}finally{document.body.removeChild(ta);}}}
+    (function(){if(typeof Plyr==='undefined')return;var players=Array.from(document.querySelectorAll('.mp-audio')).map(function(el){return new Plyr(el,{controls:['play','progress','current-time','duration','mute','volume'],clickToPlay:true,invertTime:false});});players.forEach(function(p){p.on('play',function(){players.forEach(function(other){if(other!==p)other.pause();});});});})();
+    </script>
+    <?php
+    return ob_get_clean();
+});
