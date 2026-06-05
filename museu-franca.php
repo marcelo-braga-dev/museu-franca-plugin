@@ -28,6 +28,13 @@ add_action('wp_enqueue_scripts', function () {
     );
 });
 
+// Flush rewrite rules ao ativar o plugin
+register_activation_hook(__FILE__, function () {
+    mp_register_post_type_artigo();
+    mp_register_taxonomy_colecao();
+    flush_rewrite_rules();
+});
+
 // Template customizado para single artigo
 add_filter('single_template', function (string $template): string {
     if (is_singular('artigo')) {
