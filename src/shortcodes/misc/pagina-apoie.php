@@ -4,13 +4,13 @@ if (!defined('ABSPATH')) exit;
 // Página "Apoie" — usar via [pagina_apoie]
 add_shortcode('pagina_apoie', function ($atts = []) {
     $a = shortcode_atts([
-        'pix_key'      => 'institutopraxis@yahoo.com.br',
+        'pix_key'      => 'museudapessoadefranca@gmail.com',
         'banco'        => 'Banco do Brasil',
         'agencia'      => '0053-1',
-        'conta'        => '44-479-0',
+        'conta'        => '103.585-1',
         'cnpj'         => '07.464.521-0001/49',
-        'qr'           => '/wp-content/uploads/2025/08/qrcode_pix.png',
-        'contato'      => 'ipra@institutopraxis.org.br',
+        'qr'           => '/wp-content/uploads/2025/09/pix_musseupessoa.png',
+        'contato'      => 'museudapessoadefranca@gmail.com',
         'meta_percent' => '56',
     ], $atts, 'pagina_apoie');
 
