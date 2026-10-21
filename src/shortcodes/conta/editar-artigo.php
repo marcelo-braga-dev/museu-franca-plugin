@@ -435,9 +435,9 @@ add_shortcode('editar_artigo', function () {
                 <?php if (!empty($videos)): ?>
                     <div class="grid-videos" id="yt-existentes">
                         <?php foreach ($videos as $idx => $item):
-                            $u   = is_array($item) ? ($item['url'] ?? '') : '';
+                            $u   = is_array($item) ? ($item['url'] ?? '') : (string)$item;
                             $d   = is_array($item) ? ($item['desc'] ?? '') : '';
-                            $vid = is_array($item) ? ($item['video_id'] ?? '') : ''; ?>
+                            $vid = is_array($item) ? ($item['video_id'] ?? '') : mp_extract_youtube_id((string)$item); ?>
                             <div class="video-card">
                                 <div class="video-header"><i class="fab fa-youtube"></i> <span>Vídeo existente</span></div>
                                 <input type="url" name="yt_exist_url[<?php echo esc_attr($idx); ?>]" value="<?php echo esc_attr($u); ?>" oninput="updateVideoPreview(this)" placeholder="https://www.youtube.com/watch?v=...">

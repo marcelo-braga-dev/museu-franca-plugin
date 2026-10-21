@@ -56,7 +56,7 @@ add_shortcode('visualizar_artigo', function ($atts = []) {
                     else { $notice = 'Selecione uma categoria válida.'; }
                     break;
                 case 'reset_views':
-                    delete_post_meta($post_id, MP_META_VIEWS);
+                    update_post_meta($post_id, MP_META_VIEWS, 0);
                     $notice = 'Contador de views zerado.';
                     break;
                 case 'trash_post':
@@ -411,6 +411,8 @@ add_shortcode('visualizar_artigo', function ($atts = []) {
             $data = is_array($raw) ? $raw : maybe_unserialize($raw);
             $vid  = isset($data['video_id']) ? sanitize_text_field($data['video_id']) : '';
             $desc = isset($data['desc']) ? wp_kses_post($data['desc']) : '';
+            // Registros antigos guardam apenas a URL (string)
+            if (!$vid && is_string($data)) $vid = mp_extract_youtube_id($data);
             if ($vid) $cards[] = ['id' => $vid, 'desc' => $desc, 'embed' => "https://www.youtube.com/embed/$vid"];
         }
         if (!empty($cards)): ?>

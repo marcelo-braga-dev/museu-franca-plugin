@@ -15,6 +15,7 @@ require_once MP_PLUGIN_DIR . 'helpers/colecao-helper.php';
 
 // AJAX & Assets
 require_once MP_PLUGIN_DIR . 'src/ajax/favoritos.php';
+require_once MP_PLUGIN_DIR . 'src/ajax/visualizacoes.php';
 
 // Shortcodes - Auth
 require_once MP_PLUGIN_DIR . 'src/shortcodes/auth/login.php';

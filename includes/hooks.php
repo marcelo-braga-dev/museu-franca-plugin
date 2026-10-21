@@ -1,21 +1,7 @@
 <?php
 if (!defined('ABSPATH')) exit;
 
-// ===== View counter (atômico via $wpdb) =====
-add_action('wp', function () {
-    if (!is_singular('artigo')) return;
-    $post_id = get_queried_object_id();
-    if (!$post_id) return;
-
-    global $wpdb;
-    $updated = $wpdb->query($wpdb->prepare(
-        "UPDATE {$wpdb->postmeta} SET meta_value = meta_value + 1 WHERE post_id = %d AND meta_key = %s",
-        $post_id, MP_META_VIEWS
-    ));
-    if (!$updated) {
-        add_post_meta($post_id, MP_META_VIEWS, 1, true);
-    }
-});
+// ===== View counter: registrado via JS em src/ajax/visualizacoes.php =====
 
 // ===== Last login =====
 add_action('wp_login', function ($user_login, $user) {
